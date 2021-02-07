@@ -41,11 +41,14 @@ $calculate
 
 ## Features
 
-- [ ] Customizable prefix
-    - [ ] Ensure 1 ASCII char length
+- [X] Customizable prefix
+    - [X] Ensure 1-2 char length
+    - [ ] Ensure ASCII
 - [ ] Adds upvote reactions automatically to the designated submissions channel
+- [ ] Removes regular messages and videos
 - [ ] Deletes user's previous submissions if they upload more than one per period.
     - [ ] Only tracks submissions per period - previous periods are ignored.
 - [ ] Removes user's previous reactions if they vote more than once.
 - [ ] Calculates the winners automatically.
+- [ ] Handles submission removal
 - [ ] Automatically switches between periods if a duration is specified
