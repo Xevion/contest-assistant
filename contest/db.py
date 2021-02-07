@@ -49,10 +49,12 @@ class ContestDatabase(object):
     async def setup_guild(self, guild_id: int) -> None:
         """Sets up a guild in the database."""
         await self.conn.execute('''INSERT INTO guild (id) VALUES (?)''', [guild_id])
+        await self.conn.commit()
 
     async def set_prefix(self, guild_id: int, new_prefix: str) -> None:
         """Updates the prefix for a specific guild in the database"""
         await self.conn.execute('''UPDATE guild SET prefix = ? WHERE id = ?''', [new_prefix, guild_id])
+        await self.conn.commit()
 
     async def is_setup(self, guild_id: int) -> bool:
         """Checks whether the bot is setup to complete submission channel related commands."""
@@ -70,6 +72,11 @@ class ContestDatabase(object):
         cur = await self.conn.cursor()
         try:
             await cur.execute('''SELECT prefix FROM guild WHERE id = ?''', [guild_id])
-            return await (await cur.fetchone())['prefix']
+            return (await cur.fetchone())[0]
         finally:
             await cur.close()
+
+    async def teardown_guild(self, guild_id: int) -> None:
+        """Removes a guild from the database while completing appropriate teardown actions."""
+        await self.conn.execute('''DELETE FROM guild WHERE id = ?''', [guild_id])
+        await self.conn.commit()
