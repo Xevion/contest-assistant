@@ -76,6 +76,19 @@ class ContestDatabase(object):
         finally:
             await cur.close()
 
+    async def get_submission(self, guild_id: int) -> int:
+        cur = await self.conn.cursor()
+        try:
+            await cur.execute('''SELECT submission FROM guild WHERE id = ?''', [guild_id])
+            return (await cur.fetchone())[0]
+        finally:
+            await cur.close()
+
+    async def set_submission(self, guild_id: int, new_submission: int) -> None:
+        """Updates the submission channel for a specific guild in the database"""
+        await self.conn.execute('''UPDATE guild SET submission = ? WHERE id = ?''', [new_submission, guild_id])
+        await self.conn.commit()
+
     async def teardown_guild(self, guild_id: int) -> None:
         """Removes a guild from the database while completing appropriate teardown actions."""
         await self.conn.execute('''DELETE FROM guild WHERE id = ?''', [guild_id])
