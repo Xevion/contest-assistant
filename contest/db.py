@@ -1,4 +1,5 @@
 import logging
+import os
 import sqlite3
 
 import aiosqlite
@@ -16,7 +17,6 @@ class ContestDatabase(object):
 
     def __init__(self, conn: aiosqlite.Connection) -> None:
         self.conn = conn
-        self.setup()
 
     @classmethod
     async def create(cls) -> 'ContestDatabase':
@@ -24,17 +24,27 @@ class ContestDatabase(object):
         Constructs a ContestDatabase object connecting to the default database location with the proper connection settings.
         :return: A fully realized ContestDatabase object.
         """
-        conn = await aiosqlite.connect(constants.DATABASE, detect_types=sqlite3.PARSE_DELCTYPES)
+        conn = await aiosqlite.connect(constants.DATABASE, detect_types=sqlite3.PARSE_DECLTYPES)
+        logger.info(f'Asynchronous SQLite3 connection made to ./{os.path.relpath(constants.DATABASE)}')
         db = ContestDatabase(conn)
+        await db.setup()
         await conn.commit()
+        logger.info('ContestDatabase instance created.')
         return db
 
     async def setup(self) -> None:
         """Sets up the tables for initial database creation"""
-        await self.conn.execute('''CREATE TABLE IF NOT EXISTS guild
-                            (id INTEGER PRIMARY KEY,
-                            prefix TEXT DEFAULT '$',
-                            submission INTEGER NULLABLE)''')
+        cur = await self.conn.cursor()
+        try:
+            await cur.execute('''SELECT name FROM sqlite_master WHERE type='table' AND name = ?;''', ['guild'])
+            if await cur.fetchone() is None:
+                await self.conn.execute('''CREATE TABLE IF NOT EXISTS guild
+                                            (id INTEGER PRIMARY KEY,
+                                            prefix TEXT DEFAULT '$',
+                                            submission INTEGER NULLABLE)''')
+                logger.info(f"'guild' table created.")
+        finally:
+            await cur.close()
 
     async def setup_guild(self, guild_id: int) -> None:
         """Sets up a guild in the database."""
@@ -60,6 +70,6 @@ class ContestDatabase(object):
         cur = await self.conn.cursor()
         try:
             await cur.execute('''SELECT prefix FROM guild WHERE id = ?''', [guild_id])
-            return (await cur.fetchone())['prefix']
+            return await (await cur.fetchone())['prefix']
         finally:
             await cur.close()

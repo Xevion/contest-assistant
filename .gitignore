@@ -1,6 +1,7 @@
 # Repository specific
 .idea
 token.dat
+database.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
