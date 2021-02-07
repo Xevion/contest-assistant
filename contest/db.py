@@ -76,7 +76,7 @@ class ContestDatabase(object):
         finally:
             await cur.close()
 
-    async def get_submission(self, guild_id: int) -> int:
+    async def get_submission_channel(self, guild_id: int) -> int:
         cur = await self.conn.cursor()
         try:
             await cur.execute('''SELECT submission FROM guild WHERE id = ?''', [guild_id])
@@ -84,7 +84,7 @@ class ContestDatabase(object):
         finally:
             await cur.close()
 
-    async def set_submission(self, guild_id: int, new_submission: int) -> None:
+    async def set_submission_channel(self, guild_id: int, new_submission: int) -> None:
         """Updates the submission channel for a specific guild in the database"""
         await self.conn.execute('''UPDATE guild SET submission = ? WHERE id = ?''', [new_submission, guild_id])
         await self.conn.commit()

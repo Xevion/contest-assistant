@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord.ext.commands import Context
 
 from contest import checks
 from contest.bot import ContestBot
@@ -17,20 +18,43 @@ class ContestCog(commands.Cog):
         cur_prefix = await self.bot.db.get_prefix(ctx.guild.id)
         if 1 <= len(new_prefix) <= 2:
             if cur_prefix == new_prefix:
-                return await ctx.send(f'The prefix is already `{new_prefix}`')
+                return await ctx.send(f':no_entry_sign:  The prefix is already `{new_prefix}`.')
             else:
                 await self.bot.db.set_prefix(ctx.guild.id, new_prefix)
-                return await ctx.send(f':white_check_mark:  Prefix changed to `{new_prefix}`')
+                return await ctx.send(f':white_check_mark:  Prefix changed to `{new_prefix}`.')
         else:
             return await ctx.send(':no_entry_sign: Invalid argument. Prefix must be 1 or 2 characters long.')
 
     @commands.command()
     @commands.guild_only()
     @checks.privileged()
-    async def submission(self, ctx, new_submission: discord.TextChannel):
+    async def submission(self, ctx: Context, new_submission: discord.TextChannel):
         """Changes the bot's saved submission channel."""
-        pass
+        cur_submission = await self.bot.db.get_submission_channel(ctx.guild.id)
+        if cur_submission == new_submission.id:
+            return await ctx.send(
+                f':no_entry_sign:  The submission channel is already set to {new_submission.mention}.')
+        else:
+            await self.bot.db.set_submission_channel(ctx.guild.id, new_submission.id)
+            return await ctx.send(f':white_check_mark:  Submission channel changed to {new_submission.mention}.')
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author == self.bot.user or message.author.bot or not message.guild: return
+        cur_submission = await self.bot.db.get_submission_channel(message.guild.id)
+
+        if message.channel.id == cur_submission:
+            attachments = message.attachments
+            if len(attachments) == 0:
+                await message.delete(delay=1)
+                warning = await message.channel.send(
+                    f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
+                await warning.delete(delay=5)
+            elif len(attachments) > 1:
+                await message.delete(delay=1)
+                warning = await message.channel.send(
+                    f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
+                await warning.delete(delay=5)
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
