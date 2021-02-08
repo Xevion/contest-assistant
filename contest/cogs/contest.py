@@ -79,6 +79,34 @@ class ContestCog(commands.Cog):
                 logger.info(f'New submission created ({message.id}).')
 
     @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        """Handles submission deletions by the users, moderators or other bots for any reason."""
+        # Ignore messages we delete
+        if payload.message_id in expected_deletions:
+            expected_deletions.remove(payload.message_id)
+            return
+
+        # If the message was cached, check that it's in the correct channel.
+        if payload.cached_message is not None:
+            cur_submission = await self.bot.db.get_submission_channel(payload.guild_id)
+            if payload.cached_message.channel.id != cur_submission:
+                return
+
+        cur = await self.bot.db.conn.cursor()
+        try:
+            await cur.execute('''DELETE FROM submission WHERE id = ? AND guild = ?''',
+                              [payload.message_id, payload.guild_id])
+            if cur.rowcount > 0:
+                author = payload.cached_message.author.display_name if payload.cached_message is not None else 'Unknown'
+                logger.info(f'Submission {payload.message_id} by {author} deleted by outside source.')
+        finally:
+            await cur.close()
+
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent) -> None:
+        pass
+
+    @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         pass
 
