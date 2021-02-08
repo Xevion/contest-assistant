@@ -1,9 +1,16 @@
+import logging
+
 import discord
 from discord.ext import commands
 from discord.ext.commands import Context
 
-from contest import checks
+from contest import checks, constants
 from contest.bot import ContestBot
+
+logger = logging.getLogger(__file__)
+logger.setLevel(constants.LOGGING_LEVEL)
+
+expected_deletions = []
 
 
 class ContestCog(commands.Cog):
@@ -43,18 +50,33 @@ class ContestCog(commands.Cog):
         if message.author == self.bot.user or message.author.bot or not message.guild: return
         cur_submission = await self.bot.db.get_submission_channel(message.guild.id)
 
-        if message.channel.id == cur_submission:
+        channel: discord.TextChannel = message.channel
+        if channel.id == cur_submission:
             attachments = message.attachments
             if len(attachments) == 0:
                 await message.delete(delay=1)
-                warning = await message.channel.send(
+                warning = await channel.send(
                     f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
                 await warning.delete(delay=5)
             elif len(attachments) > 1:
                 await message.delete(delay=1)
-                warning = await message.channel.send(
+                warning = await channel.send(
                     f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
                 await warning.delete(delay=5)
+            else:
+                last_submission = await self.bot.db.get_submission(message.guild.id, message.author.id)
+
+                if last_submission is not None:
+                    # delete last submission
+                    submission_msg = await channel.fetch_message(last_submission)
+                    if submission_msg is None:
+                        logger.error(f'Unexpected: submission message {last_submission} could not be found.')
+                    else:
+                        await submission_msg.delete()
+                        logger.info(f'Old submission deleted. {last_submission} (Old) -> {message.id} (New)')
+
+                await self.bot.db.add_submission(message.id, channel.guild.id, message.author.id, message.created_at)
+                logger.info(f'New submission created ({message.id}).')
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:

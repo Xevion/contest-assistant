@@ -1,6 +1,8 @@
 import logging
 import os
 import sqlite3
+from datetime import datetime
+from typing import Optional
 
 import aiosqlite
 
@@ -43,6 +45,15 @@ class ContestDatabase(object):
                                             prefix TEXT DEFAULT '$',
                                             submission INTEGER NULLABLE)''')
                 logger.info(f"'guild' table created.")
+
+            await cur.execute('''SELECT name FROM sqlite_master WHERE type='table' AND name = ?;''', ['submission'])
+            if await cur.fetchone() is None:
+                await self.conn.execute('''CREATE TABLE IF NOT EXISTS submission
+                                            (id INTEGER PRIMARY KEY,
+                                            user INTEGER,
+                                            guild INTEGER,
+                                            timestamp DATETIME)''')
+                logger.info(f"'submission' table created.")
         finally:
             await cur.close()
 
@@ -92,4 +103,22 @@ class ContestDatabase(object):
     async def teardown_guild(self, guild_id: int) -> None:
         """Removes a guild from the database while completing appropriate teardown actions."""
         await self.conn.execute('''DELETE FROM guild WHERE id = ?''', [guild_id])
+        await self.conn.commit()
+
+    async def get_submission(self, guild_id: int, user_id: int) -> Optional[int]:
+        cur = await self.conn.cursor()
+        try:
+            await cur.execute('''SELECT id FROM submission WHERE guild = ? AND user = ?''', [guild_id, user_id])
+            row = await cur.fetchone()
+            if row is None:
+                return None
+            return row[0]
+        finally:
+            await cur.close()
+
+    async def add_submission(self, submission_id: int, guild_id: int, user_id: int, timestamp: int = None) -> None:
+        await self.conn.execute(
+            '''INSERT INTO submission (id, user, guild, timestamp) VALUES (?, ?, ?, ?)''',
+            [submission_id, user_id, guild_id, timestamp or datetime.utcnow().timestamp()]
+        )
         await self.conn.commit()
