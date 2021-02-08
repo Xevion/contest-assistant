@@ -65,7 +65,6 @@ class ContestCog(commands.Cog):
                 await warning.delete(delay=5)
             else:
                 last_submission = await self.bot.db.get_submission(message.guild.id, message.author.id)
-
                 if last_submission is not None:
                     # delete last submission
                     submission_msg = await channel.fetch_message(last_submission)
@@ -75,12 +74,19 @@ class ContestCog(commands.Cog):
                         await submission_msg.delete()
                         logger.info(f'Old submission deleted. {last_submission} (Old) -> {message.id} (New)')
 
+                    # Delete the old submission row
+                    await self.bot.db.conn.execute('''DELETE FROM submission WHERE id = ?''', [last_submission])
+                    await self.bot.db.conn.commit()
+
+                # Add the new submission row
                 await self.bot.db.add_submission(message.id, channel.guild.id, message.author.id, message.created_at)
                 logger.info(f'New submission created ({message.id}).')
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
         """Handles submission deletions by the users, moderators or other bots for any reason."""
+        await self.bot.wait_until_ready()
+
         # Ignore messages we delete
         if payload.message_id in expected_deletions:
             expected_deletions.remove(payload.message_id)
@@ -99,6 +105,7 @@ class ContestCog(commands.Cog):
             if cur.rowcount > 0:
                 author = payload.cached_message.author.display_name if payload.cached_message is not None else 'Unknown'
                 logger.info(f'Submission {payload.message_id} by {author} deleted by outside source.')
+            await self.bot.db.conn.commit()
         finally:
             await cur.close()
 
