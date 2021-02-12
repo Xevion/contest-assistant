@@ -4,8 +4,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
-from contest import constants
-from contest.db import ContestDatabase
+from bot import constants
+from bot.db import ContestDatabase
 
 logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)

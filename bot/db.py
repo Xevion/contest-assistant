@@ -3,11 +3,11 @@ import os
 import sqlite3
 from collections import namedtuple
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 
 import aiosqlite
 
-from contest import constants
+from bot import constants
 
 logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
@@ -154,7 +154,14 @@ class ContestDatabase(object):
 
     @staticmethod
     async def generate_insert_query(table: str, columns: List[str]) -> str:
-        return f'''INSERT INTO {table} ({", ".join(columns)}) VALUES ({", ".join("?" for _ in columns)})'''
+        """
+        Generate a basic limited insert query based on a destination table and number of named arguments.
+
+        Does NOT execute the query or insert any values - run this with Connection.execute()!
+        """
+        query = f'''INSERT INTO {table} ({", ".join(columns)}) VALUES ({", ".join("?" for _ in columns)})'''
+        logger.debug(query)
+        return query
 
     async def new_period(self, period: Period) -> None:
         """Given a period, adds the period to the table and updates the associated guild."""
@@ -172,7 +179,7 @@ class ContestDatabase(object):
             items = filter(lambda item: item[1] is not None, period._asdict().items())
             columns, values = zip(*items)
             query = await self.generate_insert_query('period', list(columns))
-            logger.debug(f'Generated Insert Query: {query}')
+
             await cur.execute(query, values)
             await self.conn.commit()
 
@@ -182,4 +189,19 @@ class ContestDatabase(object):
         finally:
             await cur.close()
 
-    async def update_period(self, ):
+    async def update(self, obj: Union[Guild, Submission, Period]) -> None:
+        """Using the objects's ID, updates a row in the database."""
+        assert obj is not None and isinstance(obj, tuple) and getattr(obj, '_fields', None) is not None, ""
+        assert obj.id is not None, ""
+
+        cur = await self.conn.cursor()
+        try:
+            # Add the period to the table
+            items = filter(lambda item: item[1] is not None, obj._asdict().items())
+            columns, values = zip(*items)
+            query = await self.generate_insert_query(type(object).__name__.lower(), list(columns))
+
+            await cur.execute(query, values)
+            await self.conn.commit()
+        finally:
+            await cur.close()

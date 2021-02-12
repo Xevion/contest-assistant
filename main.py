@@ -1,7 +1,7 @@
 import logging
 
-from contest import constants
-from contest.bot import ContestBot
+from bot import constants
+from bot.bot import ContestBot
 
 if __name__ == "__main__":
     logger = logging.getLogger(__file__)
