@@ -10,6 +10,7 @@ discord = "~=1.0.1"
 aiosqlite = "~=0.16.1"
 pytest = "*"
 pytest-asyncio = "*"
+sqlalchemy = "*"
 
 [requires]
 python_version = "3.7"
