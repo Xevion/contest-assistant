@@ -42,7 +42,7 @@ class Guild(Base):
 
     active = Column(Boolean, default=True)  # Whether or not the bot is active inside the given Guild. Used for better querying.
     joined = Column(DateTime, default=datetime.datetime.utcnow)  # The initial join time for this bot to a particular Discord.
-    last_joined = Column(DateTime, nullable=True)  # The last time the bot joined this server.
+    last_joined = Column(DateTime, default=datetime.datetime.utcnow)  # The last time the bot joined this server.
 
 
 def check_not_finished(func):

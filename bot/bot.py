@@ -42,22 +42,29 @@ class ContestBot(commands.Bot):
 
         if message.guild:
             with self.get_session() as session:
-                guild = session.query(Guild).filter_by(id=message.guild.id).first()
+                guild = session.query(Guild).get(message.guild.id)
                 base.append(guild.prefix)
         return base
 
     async def on_ready(self):
+        """Communicate that the bot is online now."""
         logger.info('Bot is now ready and connected to Discord.')
         guild_count = len(self.guilds)
-        logger.info(
-            f'Connected as {self.user.name}#{self.user.discriminator} to {guild_count} guild{"s" if guild_count > 1 else ""}.')
+        logger.info(f'Connected as {self.user.name}#{self.user.discriminator} to {guild_count} guild{"s" if guild_count > 1 else ""}.')
+
+        with self.get_session() as session:
+            for guild in self.guilds:
+                _guild: Guild = session.query(Guild).get(guild.id)
+                if _guild is None:
+                    logger.warning(f'Guild {guild.name} ({guild.id}) was not inside database on ready. Bot was disconnected or did not add it properly...')
+                    session.add(Guild(id=guild.id))
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """Handles adding or reactivating a Guild in the database."""
         logger.info(f'Added to new guild: {guild.name} ({guild.id})')
 
         with self.get_session() as session:
-            _guild: Guild = session.query(Guild).filter_by(active=False, id=guild.id).first()
+            _guild: Guild = session.query(Guild).get(guild.id)
             if _guild is None:
                 session.add(Guild(id=guild.id))
             else:
