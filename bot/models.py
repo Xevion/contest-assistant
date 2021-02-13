@@ -36,12 +36,28 @@ class Guild(Base):
     prefix = Column(Text, default='$')  # The command prefix used by this particular guild.
     submission_channel = Column(Integer, nullable=True)  # The channel being scanned for messages by this particular guild.
 
-    current_period = Column(Integer, ForeignKey('period.id'), nullable=True)  # The period currently active for this guild.
-    periods = relationship("Period", back_populates="guild")  # All periods ever started inside this guild
+    current_period_id = Column(Integer, ForeignKey('period.id'), nullable=True)  # The period currently active for this guild.
+    current_period = relationship("Period", foreign_keys=current_period_id)
+    periods = relationship("Period", back_populates="guild", foreign_keys="Period.guild_id")  # All periods ever started inside this guild
 
     active = Column(Boolean, default=True)  # Whether or not the bot is active inside the given Guild. Used for better querying.
     joined = Column(DateTime, default=datetime.datetime.utcnow)  # The initial join time for this bot to a particular Discord.
     last_joined = Column(DateTime, nullable=True)  # The last time the bot joined this server.
+
+
+def check_not_finished(func):
+    """
+    Throws `FinishedPeriod` if the period has already completed, is inactive, or is in it's Finished State.
+    """
+
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if self.state is PeriodStates.FINISHED: raise FinishedPeriod(f"Period is in it's Finished state.")
+        elif not self.active: raise FinishedPeriod("Period is no longer active.")
+        elif self.completed: raise FinishedPeriod("Period is already completed.")
+        func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class Submission(Base):
@@ -50,9 +66,10 @@ class Submission(Base):
 
     id = Column(Integer, primary_key=True)  # Doubles as the ID this Guild has in Discord
     user = Column(Integer)  # The ID of the user who submitted it.
-    period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
-    period = relationship("Period", back_populates="period")  # The period this submission was made in.
     timestamp = Column(DateTime)  # When the Submission was posted
+
+    period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
+    period = relationship("Period", back_populates="submissions")  # The period this submission was made in.
 
 
 class Period(Base):
@@ -61,11 +78,12 @@ class Period(Base):
 
     id = Column(Integer, primary_key=True)
     guild_id = Column(Integer, ForeignKey("guild.id"))  # The guild this period was created in.
-    guild = relationship("Guild", back_populates="guild")
+    guild = relationship("Guild", back_populates="periods", foreign_keys=guild_id)
 
-    state = Column(Enum(PeriodStates))  # The current state of the period.
+    state = Column(Enum(PeriodStates), default=PeriodStates.READY)  # The current state of the period.
     active = Column(Boolean, default=True)  # Whether this Period is currently running. State will not necessarily be FINISHED.
     completed = Column(Boolean, default=False)  # Whether this Period was completed to the end, properly.
+
     submissions = relationship("Submission", back_populates="period")  # All the submissions submitted during this Period's active state.
 
     start_time = Column(DateTime, default=datetime.datetime.utcnow())  # When this period was created/started (Ready state).
@@ -73,19 +91,6 @@ class Period(Base):
     paused_time = Column(DateTime, nullable=True)  # When this period switched to the Paused state.
     voting_time = Column(DateTime, nullable=True)  # When this period switched to the Voting state.
     finished_time = Column(DateTime, nullable=True)  # When this period switched to the Finished state.
-
-    def check_not_finished(self, func):
-        """
-        Throws `FinishedPeriod` if the period has already completed, is inactive, or is in it's Finished State.
-        """
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            if self.state is PeriodStates.FINISHED: raise FinishedPeriod(f"Period is in it's Finished state.")
-            elif not self.active: raise FinishedPeriod("Period is no longer active.")
-            elif self.completed: raise FinishedPeriod("Period is already completed.")
-            func(*args, **kwargs)
-
-        return wrapper
 
     @check_not_finished
     def advance_state(self) -> PeriodStates:
