@@ -1,10 +1,11 @@
 import datetime
 import enum
 
-from sqlalchemy import Text, Integer, Column, ForeignKey, DateTime, Enum, Boolean
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+
+from bot.exceptions import FinishedPeriod
 
 Base = declarative_base()
 
@@ -33,8 +34,10 @@ class Guild(Base):
     id = Column(Integer, primary_key=True)  # Doubles as the ID this Guild has in Discord
     prefix = Column(Text, default='$')  # The command prefix used by this particular guild.
     submission_channel = Column(Integer, nullable=True)  # The channel being scanned for messages by this particular guild.
-    submissions = relationship("Submission", back_populates="guild")
-    period = Column(Integer, ForeignKey('period.id'))  # The
+
+    current_period = Column(Integer, ForeignKey('period.id'), nullable=True)  # The period currently active for this guild.
+    all_periods = relationship("Period", back_populates="guild")  # All periods ever started inside this guild
+
     active = Column(Boolean, default=True)  # Whether or not the bot is active inside the given Guild. Used for better querying.
     joined = Column(DateTime, default=datetime.datetime.utcnow)  # The initial join time for this bot to a particular Discord.
     last_joined = Column(DateTime, nullable=True)  # The last time the bot joined this server.
@@ -46,12 +49,9 @@ class Submission(Base):
 
     id = Column(Integer, primary_key=True)  # Doubles as the ID this Guild has in Discord
     user = Column(Integer)  # The ID of the user who submitted it.
-    guild_id = Column(Integer, ForeignKey("guild.id"))  # The ID of the Guild this submission is in.
-    guild = relationship("Guild", back_populates="guild")  # The database Guild this Submission relates to.
-    timestamp = Column(DateTime)  # When the Submission was posted
-
     period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
     period = relationship("Period", back_populates="period")  # The period this submission was made in.
+    timestamp = Column(DateTime)  # When the Submission was posted
 
 
 class Period(Base):
@@ -59,11 +59,39 @@ class Period(Base):
     __tablename__ = "period"
 
     id = Column(Integer, primary_key=True)
+    guild_id = Column(Integer, ForeignKey("guild.id"))  # The guild this period was created in.
+    guild = relationship("Guild", back_populates="guild")
+
     state = Column(Enum(PeriodStates))  # The current state of the period.
-    submissions = Column(JSON, nullable=True)  # A simple JSON array representing
+    active = Column(Boolean, default=True)  # Whether this Period is currently running. State will not necessarily be FINISHED.
+    completed = Column(Boolean, default=False)  # Whether this Period was completed to the end, properly.
+    submissions = relationship("Submission", back_populates="period")  # All the submissions submitted during this Period's active state.
 
     start_time = Column(DateTime, default=datetime.datetime.utcnow())  # When this period was created/started (Ready state).
     submissions_time = Column(DateTime, nullable=True)  # When this period switched to the Submissions state.
     paused_time = Column(DateTime, nullable=True)  # When this period switched to the Paused state.
     voting_time = Column(DateTime, nullable=True)  # When this period switched to the Voting state.
     finished_time = Column(DateTime, nullable=True)  # When this period switched to the Finished state.
+
+    def advance_state(self) -> PeriodStates:
+        """
+        Advances the current recorded state of this Period, recording timestamps as needed.
+
+        Throws FinishedPeriod if the period has already completed.
+        """
+        if self.state is PeriodStates.FINISHED: raise FinishedPeriod(f"Period is in it's Finished state.")
+        elif not self.active: raise FinishedPeriod("Period is no longer active.")
+
+        next_state = PeriodStates(int(self.state) + 1)
+        if self.state == PeriodStates.READY:
+            self.submissions_time = datetime.datetime.utcnow()
+        elif self.state == PeriodStates.SUBMISSIONS:
+            self.paused_time = datetime.datetime.utcnow()
+        elif self.state == PeriodStates.PAUSED:
+            self.voting_time = datetime.datetime.utcnow()
+        elif self.state == PeriodStates.VOTING:
+            self.finished_time = datetime.datetime.utcnow()
+            self.completed = True
+            self.active = False
+
+        return next_state
