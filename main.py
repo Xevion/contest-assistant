@@ -1,7 +1,10 @@
 import logging
 
+from sqlalchemy import create_engine
+
 from bot import constants
 from bot.bot import ContestBot
+from bot.models import Base
 
 if __name__ == "__main__":
     logger = logging.getLogger(__file__)
@@ -16,7 +19,9 @@ if __name__ == "__main__":
 
     initial_extensions = ['contest.cogs.contest']
 
-    bot = ContestBot(description='A assistant for the Photography Lounge\'s monday contests')
+    engine = create_engine(constants.DATABASE)
+    Base.metadata.create_all(engine)
+    bot = ContestBot(engine, description='A assistant for the Photography Lounge\'s monday contests')
 
     for extension in initial_extensions:
         bot.load_extension(extension)
