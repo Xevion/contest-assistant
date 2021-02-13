@@ -1,10 +1,18 @@
 import logging
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 from bot import constants
 from bot.bot import ContestBot
 from bot.models import Base
+
+
+def load_db(url=constants.DATABASE_URI) -> Engine:
+    engine = create_engine(url)
+    Base.metadata.create_all(engine)
+    return engine
+
 
 if __name__ == "__main__":
     logger = logging.getLogger(__file__)
@@ -17,10 +25,9 @@ if __name__ == "__main__":
                             logging.StreamHandler()
                         ])
 
-    initial_extensions = ['contest.cogs.contest']
+    initial_extensions = ['bot.cogs.contest']
 
-    engine = create_engine(constants.DATABASE)
-    Base.metadata.create_all(engine)
+    engine = load_db()
     bot = ContestBot(engine, description='A assistant for the Photography Lounge\'s monday contests')
 
     for extension in initial_extensions:
