@@ -66,7 +66,7 @@ class ContestCog(commands.Cog):
                 await self.bot.db.new_period(new_period)
             # Handle submissions state
             elif period.current_state == 0:
-                await self.bot.db.update_period(period)
+                await self.bot.db.update(period)
                 return
             # Handle voting state
             elif period.current_state == 1:

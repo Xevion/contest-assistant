@@ -14,7 +14,8 @@ logger.setLevel(constants.LOGGING_LEVEL)
 
 Guild = namedtuple('Guild', ['id', 'prefix', 'submission', 'period'])
 Submission = namedtuple('Submission', ['id', 'user', 'guild', 'timestamp'])
-Period = namedtuple('Period', ['id', 'guild', 'current_state', 'started_at', 'voting_at', 'finished_at', ''])
+Period = namedtuple('Period', ['id', 'guild', 'current_state', 'started_at', 'voting_at', 'finished_at'])
+tables = [Guild, Submission, Period]
 
 
 class ContestDatabase(object):
