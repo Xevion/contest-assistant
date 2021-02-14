@@ -1,8 +1,9 @@
 import logging
+from typing import List, Tuple
 
 import discord
 from discord.ext import commands
-from discord.ext.commands import Context, BucketType
+from discord.ext.commands import BucketType, Context, errors
 
 from bot import checks, constants
 from bot.bot import ContestBot
@@ -11,7 +12,8 @@ from bot.models import Guild, Period, PeriodStates, Submission
 logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
 
-expected_deletions = []
+expected_msg_deletions: List[int] = []
+expected_react_deletions: List[Tuple[int, int]] = []
 
 
 class ContestCog(commands.Cog):
@@ -25,7 +27,7 @@ class ContestCog(commands.Cog):
         """Changes the bot's saved prefix."""
 
         with self.bot.get_session() as session:
-            guild = session.query(Guild).filter_by(id=ctx.guild.id).first()
+            guild: Guild = session.query(Guild).filter_by(id=ctx.guild.id).first()
 
             if 1 <= len(new_prefix) <= 2:
                 if guild.prefix == new_prefix:
@@ -55,7 +57,7 @@ class ContestCog(commands.Cog):
     # noinspection PyDunderSlots,PyUnresolvedReferences
     @commands.command()
     @commands.guild_only()
-    @commands.bot_has_permissions(send_messages=True, manage_roles=True, add_reactions=True, read_message_history=True)
+    @commands.has_permissions(send_messages=True, add_reactions=True, read_message_history=True, manage_roles=True)
     @commands.cooldown(rate=2, per=5, type=BucketType.guild)
     @commands.max_concurrency(1, per=BucketType.guild, wait=False)
     @checks.privileged()
@@ -108,7 +110,8 @@ class ContestCog(commands.Cog):
                     response = 'Period paused, submissions disabled. Advance again to start voting.'
                 # Handle voting state
                 elif period.state == PeriodStates.PAUSED:
-                    # TODO: Add all reactions to every submission
+                    _guild: discord.Guild = ctx.guild
+                    await self.bot.add_voting_reactions(channel=channel, submissions=period.submissions)
                     overwrite.send_messages = False
                     overwrite.add_reactions = True
                     response = 'Period unpaused, reactions allowed. Advance again to stop voting and finalize the tallying.'
@@ -139,7 +142,6 @@ class ContestCog(commands.Cog):
             else:
                 period.deactivate()
                 await ctx.send('The current period has been closed.')
-        pass
 
     @commands.command()
     @commands.guild_only()
@@ -173,22 +175,24 @@ class ContestCog(commands.Cog):
                             f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
                     await warning.delete(delay=5)
                 else:
-                    last_submission = session.query(Submission).filter_by(id=message.guild.id, user=message.author.id)
+                    last_submission: Submission = session.query(Submission).filter_by(period=guild.current_period,
+                                                                                      user=message.author.id).first()
                     if last_submission is not None:
                         # delete last submission
-                        submission_msg = await channel.fetch_message(last_submission)
+                        submission_msg = await channel.fetch_message(last_submission.id)
                         if submission_msg is None:
-                            logger.error(f'Unexpected: submission message {last_submission} could not be found.')
+                            logger.error(f'Unexpected: submission message {last_submission.id} could not be found.')
                         else:
+                            expected_msg_deletions.append(submission_msg.id)
                             await submission_msg.delete()
-                            logger.info(f'Old submission deleted. {last_submission} (Old) -> {message.id} (New)')
+                            logger.info(f'Old submission deleted. {last_submission.id} (Old) -> {message.id} (New)')
 
                         # Delete the old submission row
                         session.delete(last_submission)
 
                     # Add the new submission row
-                    session.add(
-                            Submission(id=message.id, user=message.author.id, period=guild.current_period, timestamp=message.created_at))
+                    session.add(Submission(id=message.id, user=message.author.id,
+                                           period=guild.current_period, timestamp=message.created_at))
                     logger.info(f'New submission created ({message.id}).')
 
     @commands.Cog.listener()
@@ -197,8 +201,8 @@ class ContestCog(commands.Cog):
         await self.bot.wait_until_ready()
 
         # Ignore messages we delete
-        if payload.message_id in expected_deletions:
-            expected_deletions.remove(payload.message_id)
+        if payload.message_id in expected_msg_deletions:
+            expected_msg_deletions.remove(payload.message_id)
             return
 
         with self.bot.get_session() as session:
@@ -208,7 +212,7 @@ class ContestCog(commands.Cog):
             if payload.cached_message is not None and payload.cached_message.channel.id != guild.submission_channel:
                 return
 
-            submission = session.query(Submission).get(payload.message_id)
+            submission: Submission = session.query(Submission).get(payload.message_id)
             if submission is None:
                 logger.error(f'Submission {payload.message_id} could not be deleted from database as it was not found.')
             else:
@@ -222,11 +226,52 @@ class ContestCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
-        pass
+        # Skip reactions we add ourselves
+        if payload.user_id == self.bot.user.id: return
+
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(payload.guild_id)
+            if payload.channel_id == guild.submission_channel:
+                if payload.emoji.id != constants.Emoji.UPVOTE:
+                    channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
+                    message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
+                    await message.remove_reaction(payload.emoji, payload.member)
+                else:
+                    submission: Submission = session.query(Submission).get(payload.message_id)
+                    if submission is None:
+                        logger.warning(f'Upvote reaction added to message {payload.message_id}, but no Submission found in database.')
+                    else:
+                        submission.votes += 1
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
-        pass
+        """Deal with reactions we remove or removed manually by users."""
+        # Skip reactions we removed ourselves.
+        try:
+            index = expected_react_deletions.index((payload.message_id, payload.emoji.id))
+            del expected_react_deletions[index]
+            logger.debug(f'Skipping expected reaction removal {payload.message_id}.')
+            return
+        except ValueError:
+            pass
+
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(payload.guild_id)
+            if payload.channel_id == guild.submission_channel and payload.emoji.id == constants.Emoji.UPVOTE:
+                submission: Submission = session.query(Submission).get(payload.message_id)
+                if submission is None:
+                    logger.warning(f'Upvote reaction removed from message {payload.message_id}, but no Submission found in database.')
+                else:
+                    submission.votes -= 1
+
+                    # Get the actual number of votes from the message
+                    channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
+                    message: discord.Message = await channel.fetch_message(payload.message_id)
+                    reaction: discord.Reaction
+                    for reaction in filter(lambda _reaction: isinstance(_reaction.emoji, (discord.Emoji, discord.PartialEmoji))
+                                                             and _reaction.emoji.id == constants.Emoji.UPVOTE,
+                                           message.reactions):
+                        submission.set_votes(reaction.count)
 
     @commands.Cog.listener()
     async def on_raw_reaction_clear(self, payload: discord.RawReactionActionEvent) -> None:
