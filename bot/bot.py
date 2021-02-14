@@ -1,7 +1,7 @@
 import logging
 from contextlib import contextmanager
 from datetime import datetime
-from typing import ContextManager
+from typing import ContextManager, List, Optional
 
 import discord
 from discord.ext import commands
@@ -9,7 +9,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from bot import constants
-from bot.models import Guild, Period
+from bot.models import Guild, Period, Submission
 
 logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
@@ -42,7 +42,7 @@ class ContestBot(commands.Bot):
 
         if message.guild:
             with self.get_session() as session:
-                guild = session.query(Guild).get(message.guild.id)
+                guild: Guild = session.query(Guild).get(message.guild.id)
                 base.append(guild.prefix)
         return base
 
@@ -56,7 +56,8 @@ class ContestBot(commands.Bot):
             for guild in self.guilds:
                 _guild: Guild = session.query(Guild).get(guild.id)
                 if _guild is None:
-                    logger.warning(f'Guild {guild.name} ({guild.id}) was not inside database on ready. Bot was disconnected or did not add it properly...')
+                    logger.warning(
+                        f'Guild {guild.name} ({guild.id}) was not inside database on ready. Bot was disconnected or did not add it properly...')
                     session.add(Guild(id=guild.id))
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
@@ -78,10 +79,29 @@ class ContestBot(commands.Bot):
 
         with self.get_session() as session:
             # Get the associated Guild and mark it as disabled.
-            _guild = session.query(Guild).filter_by(active=True, id=guild.id).first()
+            _guild: Guild = session.query(Guild).filter_by(active=True, id=guild.id).first()
             _guild.active = False
 
             # Shut down any current running Period objects if possible.
             period: Period = _guild.current_period
             if period is not None and period.active:
                 period.deactivate()
+
+    async def add_voting_reactions(self, channel: discord.TextChannel, submissions: Optional[List[Submission]]) -> None:
+        """Adds reactions to all valid submissions in the given channel."""
+        if submissions is None:
+            with self.get_session() as session:
+                period: Guild = session.query(Guild).get(channel.guild.id).current_period
+                if period is None:
+                    logger.error('No valid submissions - current period is not set for the Guild this channel belongs to.')
+                    return
+                else:
+                    submissions = period.submissions
+
+        if len(submissions) == 0:
+            logger.warning('Attempted to add voting reactions to submissions, but none were given.')
+            return
+        else:
+            for submission in submissions:
+                message: discord.PartialMessage = channel.get_partial_message(submission.id)
+                await message.add_reaction(self.get_emoji(constants.Emoji.UPVOTE))
