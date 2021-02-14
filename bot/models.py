@@ -97,7 +97,7 @@ class Period(Base):
         """
         Advances the current recorded state of this Period, recording timestamps as needed.
         """
-        next_state = PeriodStates(int(self.state) + 1)
+        next_state = PeriodStates(self.state.value + 1)
         if self.state == PeriodStates.READY:
             self.submissions_time = datetime.datetime.utcnow()
         elif self.state == PeriodStates.SUBMISSIONS:
@@ -109,6 +109,7 @@ class Period(Base):
             self.completed = True
             self.active = False
 
+        self.state = next_state
         return next_state
 
     @check_not_finished

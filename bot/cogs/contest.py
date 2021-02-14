@@ -2,7 +2,7 @@ import logging
 
 import discord
 from discord.ext import commands
-from discord.ext.commands import Context
+from discord.ext.commands import Context, BucketType
 
 from bot import checks, constants
 from bot.bot import ContestBot
@@ -43,27 +43,31 @@ class ContestCog(commands.Cog):
         """Changes the bot's saved submission channel."""
 
         with self.bot.get_session() as session:
-            guild = session.query(Guild).filter_by(id=ctx.guild.id).first()
+            guild: Guild = session.query(Guild).get(ctx.guild.id)
 
-            if guild.submission is not None and guild.submission == new_submission.id:
+            if guild.submission_channel is not None and guild.submission_channel == new_submission.id:
                 await ctx.send(f':no_entry_sign:  The submission channel is already set to {new_submission.mention}.')
             else:
-                guild.submission_channel = new_submission
+                # TODO: Add channel permissions resetting/migration
+                guild.submission_channel = new_submission.id
                 await ctx.send(f':white_check_mark:  Submission channel changed to {new_submission.mention}.')
 
+    # noinspection PyDunderSlots,PyUnresolvedReferences
     @commands.command()
     @commands.guild_only()
+    @commands.bot_has_permissions(send_messages=True, manage_roles=True, add_reactions=True, read_message_history=True)
+    @commands.cooldown(rate=2, per=5, type=BucketType.guild)
+    @commands.max_concurrency(1, per=BucketType.guild, wait=False)
     @checks.privileged()
     async def advance(self, ctx: Context, duration: float = None, pingback: bool = True) -> None:
         """
         Advance the state of the current period pertaining to this Guild.
 
         :param ctx:
-        :param duration: If given,
+        :param duration: If given, the advance command will be repeated once more after the duration (in seconds) has passed.
         :param pingback: Whether or not the user should be pinged back when the duration is passed.
         """
-
-        assert duration == -1 or duration >= 0, "Duration must"
+        if duration is not None: assert duration >= 0, "If specified, duration must be more than or equal to zero."
 
         with self.bot.get_session() as session:
             guild: Guild = session.query(Guild).get(ctx.guild.id)
@@ -71,41 +75,70 @@ class ContestCog(commands.Cog):
 
             # Handle non-existent or previously completed period in the current guild
             if period is None or not period.active:
-                session.add(Period(id=ctx.guild.id))
+                if period is None:
+                    overwrite = discord.PermissionOverwrite()
+                    overwrite.send_messages = False
+                    overwrite.add_reactions = False
+                    await self.bot.get_channel(guild.submission_channel).set_permissions(ctx.guild.default_role, overwrite=overwrite)
+                    await ctx.send('Period created, channel permissions set.')
 
-            # Handle previous period being completed.
-            elif period.state == PeriodStates.READY:
-                # TODO: Open the channel to messages
-                pass
-            # Handle submissions state
-            elif period.state == PeriodStates.SUBMISSIONS:
-                # TODO: Close the channel to messages
-                return
-            # Handle voting state
-            elif period.state == PeriodStates.PAUSED:
-                # TODO: Add all reactions to every submission
-                # TODO: Unlock channel reactions
-                # TODO: Close channel submissions
-                return
-            # Print period submissions
-            elif period.state == PeriodStates.VOTING:
-                # TODO: Fetch all submissions related to this period
-                # TODO: Create new period for Guild at
-                return
+                period = Period(guild_id=guild.id)
+                session.add(period)
+                session.commit()
 
-    @commands.command()
-    @commands.guild_only()
-    @checks.privileged()
-    async def voting(self, ctx: Context, duration: float = None) -> None:
-        """Closes submissions and sets up the voting period."""
-        if duration < 0:
-            await ctx.send('Invalid duration - must be non-negative.')
+                guild.current_period = period
+                await ctx.send('New period started - submissions and voting disabled.')
+            else:
+                channel: discord.TextChannel = self.bot.get_channel(guild.submission_channel)
+                target_role: discord.Role = ctx.guild.default_role
+                # TODO: Research best way to implement contest roles with vagabondit's input
+
+                overwrite = discord.PermissionOverwrite()
+                response = 'Permissions unchanged - Period state error.'
+
+                # Handle previous period being completed.
+                if period.state == PeriodStates.READY:
+                    overwrite.send_messages = True
+                    overwrite.add_reactions = False
+                    response = 'Period started, submissions allowed. Advance again to pause.'
+                # Handle submissions state
+                elif period.state == PeriodStates.SUBMISSIONS:
+                    overwrite.send_messages = False
+                    overwrite.add_reactions = False
+                    response = 'Period paused, submissions disabled. Advance again to start voting.'
+                # Handle voting state
+                elif period.state == PeriodStates.PAUSED:
+                    # TODO: Add all reactions to every submission
+                    overwrite.send_messages = False
+                    overwrite.add_reactions = True
+                    response = 'Period unpaused, reactions allowed. Advance again to stop voting and finalize the tallying.'
+                # Print period submissions
+                elif period.state == PeriodStates.VOTING:
+                    overwrite.send_messages = False
+                    overwrite.add_reactions = False
+                    response = 'Period stopped. Reactions and submissions disabled. Advance again to start a new period.'
+                    # TODO: Fetch all submissions related to this period
+                    # TODO: Create new period for Guild at
+
+                period.advance_state()
+
+                await channel.set_permissions(target_role, overwrite=overwrite)
+                await ctx.send(response)
 
     @commands.command()
     @commands.guild_only()
     @checks.privileged()
     async def close(self, ctx: Context) -> None:
-        """Closes the voting period."""
+        """Closes the current period."""
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(ctx.guild.id)
+            period: Period = guild.current_period
+
+            if period is None or not period.active:
+                await ctx.send('No period is currently active.')
+            else:
+                period.deactivate()
+                await ctx.send('The current period has been closed.')
         pass
 
     @commands.command()
@@ -119,11 +152,10 @@ class ContestCog(commands.Cog):
         if message.author == self.bot.user or message.author.bot or not message.guild: return
 
         with self.bot.get_session() as session:
-            guild = session.query(Guild).get(message.guild.id)
-            print(session.query(Guild).all)
+            guild: Guild = session.query(Guild).get(message.guild.id)
 
             channel: discord.TextChannel = message.channel
-            if channel.id == guild.submission:
+            if channel.id == guild.submission_channel:
                 attachments = message.attachments
 
                 # TODO: Do attachment filtering between videos/files/audio etc.
