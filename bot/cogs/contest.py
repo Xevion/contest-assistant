@@ -16,6 +16,10 @@ expected_msg_deletions: List[int] = []
 expected_react_deletions: List[Tuple[int, int]] = []
 
 
+# TODO: Add command error handling to all commands
+# TODO: Use embeds in all bot responses
+# TODO: Look into migrating from literals to i18n-ish representation of all messages & formatting
+
 class ContestCog(commands.Cog):
     def __init__(self, bot: ContestBot):
         self.bot = bot
@@ -69,6 +73,7 @@ class ContestCog(commands.Cog):
         :param duration: If given, the advance command will be repeated once more after the duration (in seconds) has passed.
         :param pingback: Whether or not the user should be pinged back when the duration is passed.
         """
+        # TODO: Ensure that permissions for this command are being correctly tested for.
         if duration is not None: assert duration >= 0, "If specified, duration must be more than or equal to zero."
 
         with self.bot.get_session() as session:
@@ -128,6 +133,13 @@ class ContestCog(commands.Cog):
                 await channel.set_permissions(target_role, overwrite=overwrite)
                 await ctx.send(response)
 
+    @advance.error
+    async def advance_error(self, error: errors.CommandError, ctx: Context) -> None:
+        if isinstance(error, errors.MissingPermissions):
+            await ctx.send(
+                    'Check that the bot can actually modify roles, add reactions, see messages and send messages within this channel.')
+
+    # noinspection PyDunderSlots, PyUnresolvedReferences
     @commands.command()
     @commands.guild_only()
     @checks.privileged()
@@ -140,6 +152,9 @@ class ContestCog(commands.Cog):
             if period is None or not period.active:
                 await ctx.send('No period is currently active.')
             else:
+                overwrite = discord.PermissionOverwrite()
+                overwrite.send_messages = False
+                overwrite.add_reactions = False
                 period.deactivate()
                 await ctx.send('The current period has been closed.')
 
@@ -147,6 +162,15 @@ class ContestCog(commands.Cog):
     @commands.guild_only()
     async def status(self, ctx: Context) -> None:
         """Provides the bot's current state in relation to internal configuration and the server's contest, if active."""
+        # TODO: Implement status command
+        pass
+
+    @commands.command()
+    @commands.guild_only()
+    async def leaderboard(self, ctx: Context, count: int = 10, page: int = 0) -> None:
+        """Prints a leaderboard"""
+        # TODO: Implement leaderboard command
+        # TODO: Make interactive and reaction-based
         pass
 
     @commands.Cog.listener()
