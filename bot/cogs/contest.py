@@ -232,16 +232,20 @@ class ContestCog(commands.Cog):
         with self.bot.get_session() as session:
             guild: Guild = session.query(Guild).get(payload.guild_id)
             if payload.channel_id == guild.submission_channel:
+                channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
+                message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
                 if payload.emoji.id != constants.Emoji.UPVOTE:
-                    channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
-                    message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
                     await message.remove_reaction(payload.emoji, payload.member)
                 else:
                     submission: Submission = session.query(Submission).get(payload.message_id)
                     if submission is None:
                         logger.warning(f'Upvote reaction added to message {payload.message_id}, but no Submission found in database.')
                     else:
-                        submission.votes += 1
+                        submission.increment()
+                        # Make sure our reaction exists, verify vote count
+                        self_reacted = await submission.verify(await message.fetch(), self.bot.user)
+                        if not self_reacted:
+                            await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
@@ -262,16 +266,16 @@ class ContestCog(commands.Cog):
                 if submission is None:
                     logger.warning(f'Upvote reaction removed from message {payload.message_id}, but no Submission found in database.')
                 else:
-                    submission.votes -= 1
+                    submission.decrement()
 
                     # Get the actual number of votes from the message
                     channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
                     message: discord.Message = await channel.fetch_message(payload.message_id)
-                    reaction: discord.Reaction
-                    for reaction in filter(lambda _reaction: isinstance(_reaction.emoji, (discord.Emoji, discord.PartialEmoji))
-                                                             and _reaction.emoji.id == constants.Emoji.UPVOTE,
-                                           message.reactions):
-                        submission.set_votes(reaction.count)
+                    self_reacted = await submission.verify(await message.fetch(), self.bot.user)
+
+                    # Make sure our reaction exists
+                    if not self_reacted:
+                        await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
 
     @commands.Cog.listener()
     async def on_raw_reaction_clear(self, payload: discord.RawReactionActionEvent) -> None:

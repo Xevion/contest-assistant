@@ -2,8 +2,9 @@ import datetime
 import enum
 import functools
 import logging
-from typing import List
+from typing import List, Optional, Union
 
+import discord
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -80,11 +81,38 @@ class Submission(Base):
     period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
     period = relationship("Period", back_populates="submissions")  # The period this submission was made in.
 
-    def set_votes(self, n: int) -> None:
+    def increment(self) -> None:
+        """Increase the number of votes by one."""
+        self.votes += 1
+
+    def decrement(self) -> None:
+        """Decrease the number of votes by one."""
+        self.votes -= 1
+
+    async def verify(self, message: discord.Message, user: Optional[Union[discord.ClientUser, discord.User]] = None) -> bool:
         """Sets the number of votes for this Submission."""
-        if self.votes != n:
-            logger.warning(f'True vote count was off for Submission {self.id} by {n - self.votes}.')
-            self.votes = n
+        saw_user = False
+        for reaction in message.reactions:
+            # Check that it's a custom Emoji and that the Emoji is the expected Upvote emoji
+            if isinstance(reaction.emoji, (discord.Emoji, discord.PartialEmoji)):
+                if reaction.emoji.id == constants.Emoji.UPVOTE:
+                    # If a user was specified, look for him in the reactions
+                    if user is not None:
+                        reacting_user: Union[discord.Member, discord.User]
+                        async for reacting_user in reaction.users():
+                            # Check if the user who reacted to this emoji is the user we are looking for
+                            if reacting_user.id == user.id:
+                                saw_user = True
+                                break
+
+                    # Tally the number of votes
+                    votes = reaction.count - 1
+                    if votes != self.votes:
+                        # Make a racket if we counted wrong or somehow missed reactions
+                        logger.warning(f'True vote count was off for Submission {self.id} by {votes - self.votes}.')
+                        self.votes = votes
+
+        return saw_user
 
 
 class Period(Base):
