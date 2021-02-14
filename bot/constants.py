@@ -9,3 +9,8 @@ DATABASE_URI = f'sqlite:///{DATABASE}'
 
 # Other constants
 LOGGING_LEVEL = logging.DEBUG
+
+# Emote references
+class Emoji(object):
+    UPVOTE = 810310002220859393
+    DOWNVOTE = 810310019840213002
