@@ -1,14 +1,22 @@
 import datetime
 import enum
 import functools
+import logging
+from typing import List
 
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
-from bot.exceptions import FinishedPeriod
+from bot import constants, exceptions
+
+logger = logging.getLogger(__file__)
+logger.setLevel(constants.LOGGING_LEVEL)
 
 Base = declarative_base()
+
+
+# TODO: Setup and test basic automatic migration.
 
 
 class PeriodStates(enum.Enum):
@@ -52,9 +60,9 @@ def check_not_finished(func):
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        if self.state is PeriodStates.FINISHED: raise FinishedPeriod(f"Period is in it's Finished state.")
-        elif not self.active: raise FinishedPeriod("Period is no longer active.")
-        elif self.completed: raise FinishedPeriod("Period is already completed.")
+        if self.state is PeriodStates.FINISHED: raise exceptions.FinishedPeriod(f"Period is in it's Finished state.")
+        elif not self.active: raise exceptions.FinishedPeriod("Period is no longer active.")
+        elif self.completed: raise exceptions.FinishedPeriod("Period is already completed.")
         func(self, *args, **kwargs)
 
     return wrapper
@@ -67,9 +75,16 @@ class Submission(Base):
     id = Column(Integer, primary_key=True)  # Doubles as the ID this Guild has in Discord
     user = Column(Integer)  # The ID of the user who submitted it.
     timestamp = Column(DateTime)  # When the Submission was posted
+    votes = Column(Integer, default=0)
 
     period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
     period = relationship("Period", back_populates="submissions")  # The period this submission was made in.
+
+    def set_votes(self, n: int) -> None:
+        """Sets the number of votes for this Submission."""
+        if self.votes != n:
+            logger.warning(f'True vote count was off for Submission {self.id} by {n - self.votes}.')
+            self.votes = n
 
 
 class Period(Base):
@@ -79,12 +94,14 @@ class Period(Base):
     id = Column(Integer, primary_key=True)
     guild_id = Column(Integer, ForeignKey("guild.id"))  # The guild this period was created in.
     guild = relationship("Guild", back_populates="periods", foreign_keys=guild_id)
+    submissions: List[Submission] = relationship("Submission",
+                                                 back_populates="period")  # All the submissions submitted during this Period's active state.
 
     state = Column(Enum(PeriodStates), default=PeriodStates.READY)  # The current state of the period.
     active = Column(Boolean, default=True)  # Whether this Period is currently running. State will not necessarily be FINISHED.
     completed = Column(Boolean, default=False)  # Whether this Period was completed to the end, properly.
 
-    submissions = relationship("Submission", back_populates="period")  # All the submissions submitted during this Period's active state.
+    # TODO: Add automatic duration based advancement logic and tracking columns.
 
     start_time = Column(DateTime, default=datetime.datetime.utcnow())  # When this period was created/started (Ready state).
     submissions_time = Column(DateTime, nullable=True)  # When this period switched to the Submissions state.
