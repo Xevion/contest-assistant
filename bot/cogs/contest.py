@@ -200,10 +200,15 @@ class ContestCog(commands.Cog):
                     await warning.delete(delay=5)
                 else:
                     attachment = attachments[0]
+                    # TODO: Add helper for displaying error/warning messages
                     if attachment.is_spoiler():
-                        await channel.send('Attachment must not make use of a spoiler.')
+                        await message.delete(delay=1)
+                        warning = await channel.send(':no_entry_sign: Attachment must not make use of a spoiler.')
+                        await warning.delete(delay=5)
                     elif attachment.width is None:
-                        await channel.send('Attachment must be a image or video.')
+                        await message.delete(delay=1)
+                        warning = await channel.send(':no_entry_sign: Attachment must be a image or video.')
+                        await warning.delete(delay=5)
                     else:
                         last_submission: Submission = session.query(Submission).filter_by(period=guild.current_period,
                                                                                           user=message.author.id).first()
