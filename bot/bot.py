@@ -5,6 +5,7 @@ from typing import ContextManager, List, Optional
 
 import discord
 from discord.ext import commands
+# noinspection PyProtectedMember
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -57,7 +58,7 @@ class ContestBot(commands.Bot):
                 _guild: Guild = session.query(Guild).get(guild.id)
                 if _guild is None:
                     logger.warning(
-                        f'Guild {guild.name} ({guild.id}) was not inside database on ready. Bot was disconnected or did not add it properly...')
+                            f'Guild {guild.name} ({guild.id}) was not inside database on ready. Bot was disconnected or did not add it properly...')
                     session.add(Guild(id=guild.id))
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
@@ -87,11 +88,11 @@ class ContestBot(commands.Bot):
             if period is not None and period.active:
                 period.deactivate()
 
-    async def add_voting_reactions(self, channel: discord.TextChannel, submissions: Optional[List[Submission]]) -> None:
+    async def add_voting_reactions(self, channel: discord.TextChannel, submissions: Optional[List[Submission]] = None) -> None:
         """Adds reactions to all valid submissions in the given channel."""
         if submissions is None:
             with self.get_session() as session:
-                period: Guild = session.query(Guild).get(channel.guild.id).current_period
+                period: Period = session.query(Guild).get(channel.guild.id).current_period
                 if period is None:
                     logger.error('No valid submissions - current period is not set for the Guild this channel belongs to.')
                     return
@@ -99,7 +100,7 @@ class ContestBot(commands.Bot):
                     submissions = period.submissions
 
         if len(submissions) == 0:
-            logger.warning('Attempted to add voting reactions to submissions, but none were given.')
+            logger.warning('Attempted to add voting reactions to submissions, but none were given or could be found.')
             return
         else:
             for submission in submissions:

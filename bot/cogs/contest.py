@@ -19,6 +19,9 @@ expected_react_deletions: List[Tuple[int, int]] = []
 # TODO: Add command error handling to all commands
 # TODO: Use embeds in all bot responses
 # TODO: Look into migrating from literals to i18n-ish representation of all messages & formatting
+# TODO: Contest names
+# TODO: Refactor Period into Contest (major)
+
 
 class ContestCog(commands.Cog):
     def __init__(self, bot: ContestBot):
@@ -125,8 +128,7 @@ class ContestCog(commands.Cog):
                     overwrite.send_messages = False
                     overwrite.add_reactions = False
                     response = 'Period stopped. Reactions and submissions disabled. Advance again to start a new period.'
-                    # TODO: Fetch all submissions related to this period
-                    # TODO: Create new period for Guild at
+                    # TODO: Fetch all submissions related to this period and show a embed
 
                 period.advance_state()
 
@@ -184,8 +186,6 @@ class ContestCog(commands.Cog):
             if channel.id == guild.submission_channel:
                 attachments = message.attachments
 
-                # TODO: Do attachment filtering between videos/files/audio etc.
-
                 # Ensure that the submission contains at least one attachment
                 if len(attachments) == 0:
                     await message.delete(delay=1)
@@ -199,25 +199,31 @@ class ContestCog(commands.Cog):
                             f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
                     await warning.delete(delay=5)
                 else:
-                    last_submission: Submission = session.query(Submission).filter_by(period=guild.current_period,
-                                                                                      user=message.author.id).first()
-                    if last_submission is not None:
-                        # delete last submission
-                        submission_msg = await channel.fetch_message(last_submission.id)
-                        if submission_msg is None:
-                            logger.error(f'Unexpected: submission message {last_submission.id} could not be found.')
-                        else:
-                            expected_msg_deletions.append(submission_msg.id)
-                            await submission_msg.delete()
-                            logger.info(f'Old submission deleted. {last_submission.id} (Old) -> {message.id} (New)')
+                    attachment = attachments[0]
+                    if attachment.is_spoiler():
+                        await channel.send('Attachment must not make use of a spoiler.')
+                    elif attachment.width is None:
+                        await channel.send('Attachment must be a image or video.')
+                    else:
+                        last_submission: Submission = session.query(Submission).filter_by(period=guild.current_period,
+                                                                                          user=message.author.id).first()
+                        if last_submission is not None:
+                            # delete last submission
+                            submission_msg = await channel.fetch_message(last_submission.id)
+                            if submission_msg is None:
+                                logger.error(f'Unexpected: submission message {last_submission.id} could not be found.')
+                            else:
+                                expected_msg_deletions.append(submission_msg.id)
+                                await submission_msg.delete()
+                                logger.info(f'Old submission deleted. {last_submission.id} (Old) -> {message.id} (New)')
 
-                        # Delete the old submission row
-                        session.delete(last_submission)
+                            # Delete the old submission row
+                            session.delete(last_submission)
 
-                    # Add the new submission row
-                    session.add(Submission(id=message.id, user=message.author.id,
-                                           period=guild.current_period, timestamp=message.created_at))
-                    logger.info(f'New submission created ({message.id}).')
+                        # Add the new submission row
+                        session.add(Submission(id=message.id, user=message.author.id, period=guild.current_period,
+                                               timestamp=message.created_at))
+                        logger.info(f'New submission created ({message.id}).')
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
@@ -336,7 +342,7 @@ class ContestCog(commands.Cog):
                     submission: Submission = session.query(Submission).get(payload.message_id)
                     if submission is None:
                         logger.warning(
-                            f'Witnessed all upvote reactions removed from message {payload.message_id}, but no Submission found in database.')
+                                f'Witnessed all upvote reactions removed from message {payload.message_id}, but no Submission found in database.')
                     else:
                         submission.votes = 0
 
