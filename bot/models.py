@@ -9,7 +9,7 @@ from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Tex
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
-from bot import constants, exceptions
+from bot import constants, exceptions, helpers
 
 logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
@@ -94,23 +94,22 @@ class Submission(Base):
         saw_user = False
         for reaction in message.reactions:
             # Check that it's a custom Emoji and that the Emoji is the expected Upvote emoji
-            if isinstance(reaction.emoji, (discord.Emoji, discord.PartialEmoji)):
-                if reaction.emoji.id == constants.Emoji.UPVOTE:
-                    # If a user was specified, look for him in the reactions
-                    if user is not None:
-                        reacting_user: Union[discord.Member, discord.User]
-                        async for reacting_user in reaction.users():
-                            # Check if the user who reacted to this emoji is the user we are looking for
-                            if reacting_user.id == user.id:
-                                saw_user = True
-                                break
+            if helpers.is_upvote(reaction.emoji):
+                # If a user was specified, look for him in the reactions
+                if user is not None:
+                    reacting_user: Union[discord.Member, discord.User]
+                    async for reacting_user in reaction.users():
+                        # Check if the user who reacted to this emoji is the user we are looking for
+                        if reacting_user.id == user.id:
+                            saw_user = True
+                            break
 
-                    # Tally the number of votes
-                    votes = reaction.count - 1
-                    if votes != self.votes:
-                        # Make a racket if we counted wrong or somehow missed reactions
-                        logger.warning(f'True vote count was off for Submission {self.id} by {votes - self.votes}.')
-                        self.votes = votes
+                # Tally the number of votes
+                votes = reaction.count - 1
+                if votes != self.votes:
+                    # Make a racket if we counted wrong or somehow missed reactions
+                    logger.warning(f'True vote count was off for Submission {self.id} by {votes - self.votes}.')
+                    self.votes = votes
 
         return saw_user
 

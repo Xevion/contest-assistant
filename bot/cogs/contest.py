@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import BucketType, Context, errors
 
-from bot import checks, constants
+from bot import checks, constants, helpers
 from bot.bot import ContestBot
 from bot.models import Guild, Period, PeriodStates, Submission
 
@@ -231,10 +231,7 @@ class ContestCog(commands.Cog):
 
         with self.bot.get_session() as session:
             guild: Guild = session.query(Guild).get(payload.guild_id)
-
-            # If the message was cached, check that it's in the correct channel.
-            if payload.cached_message is not None and payload.cached_message.channel.id != guild.submission_channel:
-                return
+            if payload.channel_id != guild.submission_channel: return
 
             submission: Submission = session.query(Submission).get(payload.message_id)
             if submission is None:
@@ -246,7 +243,19 @@ class ContestCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent) -> None:
-        pass
+        deleted: List[int] = []
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(payload.guild_id)
+            if payload.channel_id == guild.submission_channel:
+                for message_id in payload.message_ids:
+                    submission: Submission = session.query(Submission).get(message_id)
+                    if submission is not None:
+                        deleted.append(message_id)
+                        session.delete(submission)
+
+        if len(deleted) > 0:
+            logger.info(f'{len(deleted)} submissions deleted in bulk message deletion.')
+            logger.debug(f'Messages deleted: {", ".join(map(str, deleted))}')
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
@@ -258,7 +267,7 @@ class ContestCog(commands.Cog):
             if payload.channel_id == guild.submission_channel:
                 channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
                 message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
-                if payload.emoji.id != constants.Emoji.UPVOTE:
+                if not helpers.is_upvote(payload.emoji):
                     await message.remove_reaction(payload.emoji, payload.member)
                 else:
                     submission: Submission = session.query(Submission).get(payload.message_id)
@@ -285,7 +294,7 @@ class ContestCog(commands.Cog):
 
         with self.bot.get_session() as session:
             guild: Guild = session.query(Guild).get(payload.guild_id)
-            if payload.channel_id == guild.submission_channel and payload.emoji.id == constants.Emoji.UPVOTE:
+            if payload.channel_id == guild.submission_channel and helpers.is_upvote(payload.emoji):
                 submission: Submission = session.query(Submission).get(payload.message_id)
                 if submission is None:
                     logger.warning(f'Upvote reaction removed from message {payload.message_id}, but no Submission found in database.')
@@ -303,11 +312,37 @@ class ContestCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_clear(self, payload: discord.RawReactionActionEvent) -> None:
-        pass
+        """Deal with all emojis being cleared for a specific message. Remove all votes for a given submission and then re-add the bot's."""
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(payload.guild_id)
+            if payload.channel_id == guild.submission_channel:
+                submission: Submission = session.query(Submission).get(payload.message_id)
+                if submission is None:
+                    logger.warning(f'Witnessed reactions removed from message {payload.message_id}, but no Submission found in database.')
+                else:
+                    submission.votes = 0
+                    # TODO: Add helper function for getting partial/full messages easily given a payload or channel id and message id
+                    channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
+                    message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
+                    await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
 
     @commands.Cog.listener()
     async def on_raw_reaction_clear_emoji(self, payload: discord.RawReactionClearEmojiEvent) -> None:
-        pass
+        """Deal with a specific emoji being cleared for a message. If it was the upvote, clear votes for the submission and add back the bot's"""
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(payload.guild_id)
+            if payload.channel_id == guild.submission_channel:
+                if helpers.is_upvote(payload.emoji):
+                    submission: Submission = session.query(Submission).get(payload.message_id)
+                    if submission is None:
+                        logger.warning(
+                            f'Witnessed all upvote reactions removed from message {payload.message_id}, but no Submission found in database.')
+                    else:
+                        submission.votes = 0
+
+                        channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
+                        message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
+                        await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
 
 
 def setup(bot) -> None:
