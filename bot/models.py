@@ -83,7 +83,7 @@ class Submission(Base):
     id = Column(Integer, primary_key=True)  # Doubles as the ID this Guild has in Discord
     user = Column(Integer)  # The ID of the user who submitted it.
     timestamp = Column(DateTime)  # When the Submission was posted
-    votes: List[int] = Column(MutableJson, default=[])  # A list of IDs correlating to users who voted on this submission.
+    votes: List[int] = Column(MutableJson)  # A list of IDs correlating to users who voted on this submission.
 
     period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
     period = relationship("Period", back_populates="submissions")  # The period this submission was made in.
@@ -105,7 +105,7 @@ class Submission(Base):
             raise exceptions.DatabaseNoVoteException()
         self.votes.remove(user)
 
-    def clear_other_votes(self, ignore: Union[int, Iterable[int]], users: Union[int, Iterable[int]], session: Session) -> ReactionMarker:
+    def clear_other_votes(self, ignore: Union[int, Iterable[int]], users: Union[int, Iterable[int]], session: 'Session') -> ReactionMarker:
         """
         Removes votes from all submissions in the database for a specific user.
         Returns a list of combination Message and User IDs
@@ -131,7 +131,7 @@ class Submission(Base):
             # Find what users voted for this submission that we are clearing
             votes = set(submission.votes)
             same = votes.intersection(users)
-            if len(same) < 0:
+            if len(same) > 0:
                 continue
 
             # Remove votes from the submission by said users
