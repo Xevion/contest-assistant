@@ -279,11 +279,7 @@ class ContestCog(commands.Cog):
                     if submission is None:
                         logger.warning(f'Upvote reaction added to message {payload.message_id}, but no Submission found in database.')
                     else:
-                        submission.increment()
-                        # Make sure our reaction exists, verify vote count
-                        self_reacted = await submission.verify(await message.fetch(), self.bot.user)
-                        if not self_reacted:
-                            await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
+                        await submission.update(self.bot, message=await message.fetch())
                 else:
                     # Remove the emoji since it's not supposed to be there anyways.
                     # If permissions were setup correctly, only moderators or admins should be able to trigger this.
@@ -309,16 +305,8 @@ class ContestCog(commands.Cog):
                 if submission is None:
                     logger.warning(f'Upvote reaction removed from message {payload.message_id}, but no Submission found in database.')
                 else:
-                    submission.decrement()
-
-                    # Get the actual number of votes from the message
-                    channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
-                    message: discord.Message = await channel.fetch_message(payload.message_id)
-                    self_reacted = await submission.verify(await message.fetch(), self.bot.user)
-
-                    # Make sure our reaction exists
-                    if not self_reacted:
-                        await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
+                    message = await self.bot.fetch_message(payload.channel_id, payload.message_id)
+                    await submission.update(self.bot, message=message)
 
     @commands.Cog.listener()
     async def on_raw_reaction_clear(self, payload: discord.RawReactionActionEvent) -> None:
@@ -330,10 +318,8 @@ class ContestCog(commands.Cog):
                 if submission is None:
                     logger.warning(f'Witnessed reactions removed from message {payload.message_id}, but no Submission found in database.')
                 else:
-                    submission.votes = 0
-                    # TODO: Add helper function for getting partial/full messages easily given a payload or channel id and message id
-                    channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
-                    message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
+                    submission.votes = []
+                    message = self.bot.get_message(payload.channel_id, payload.message_id)
                     await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
 
     @commands.Cog.listener()
@@ -345,13 +331,11 @@ class ContestCog(commands.Cog):
                 if helpers.is_upvote(payload.emoji):
                     submission: Submission = session.query(Submission).get(payload.message_id)
                     if submission is None:
-                        logger.warning(
-                                f'Witnessed all upvote reactions removed from message {payload.message_id}, but no Submission found in database.')
+                        logger.warning(f'Witnessed all upvote reactions removed from message {payload.message_id},'
+                                       f' but no Submission found in database.')
                     else:
-                        submission.votes = 0
-
-                        channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
-                        message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
+                        submission.votes = []
+                        message = self.bot.get_message(payload.channel_id, payload.message_id)
                         await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
 
 

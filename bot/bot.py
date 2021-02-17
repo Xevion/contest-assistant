@@ -106,3 +106,11 @@ class ContestBot(commands.Bot):
             for submission in submissions:
                 message: discord.PartialMessage = channel.get_partial_message(submission.id)
                 await message.add_reaction(self.get_emoji(constants.Emoji.UPVOTE))
+
+    def get_message(self, channel_id: int, message_id: int) -> discord.PartialMessage:
+        channel: discord.TextChannel = self.get_channel(channel_id)
+        return channel.get_partial_message(message_id)
+
+    async def fetch_message(self, channel_id: int, message_id: int) -> discord.Message:
+        channel: discord.TextChannel = self.get_channel(channel_id)
+        return await channel.fetch_message(message_id)
