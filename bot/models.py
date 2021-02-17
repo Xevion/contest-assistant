@@ -191,6 +191,9 @@ class Submission(Base):
                                     message.guild.get_member(reaction_marker.user)
                             )
 
+        # Update the current list of votes
+        self.votes = list(current)
+
         if len(to_remove) > 0:
             if report: report += ' '
             report += f'Removed: {", ".join(map(str, to_remove))}'
