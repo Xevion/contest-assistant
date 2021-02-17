@@ -30,3 +30,10 @@ class DatabaseNoVoteException(ContestException):
 
     def __repr__(self) -> str:
         return 'You can\'t remove a vote that never or no longer exists'
+
+
+class SelfVoteException(ContestException):
+    """A user tried to vote on his own submission."""
+
+    def __repr__(self) -> str:
+        return 'You can\'t vote on your own submission. Please choose another post.'
