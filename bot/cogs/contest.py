@@ -104,29 +104,25 @@ class ContestCog(commands.Cog):
                 # TODO: Research best way to implement contest roles with vagabondit's input
 
                 overwrite = discord.PermissionOverwrite()
+                overwrite.send_messages = False
+                overwrite.add_reactions = False
                 response = 'Permissions unchanged - Period state error.'
 
                 # Handle previous period being completed.
                 if period.state == PeriodStates.READY:
                     overwrite.send_messages = True
-                    overwrite.add_reactions = False
                     response = 'Period started, submissions allowed. Advance again to pause.'
                 # Handle submissions state
                 elif period.state == PeriodStates.SUBMISSIONS:
-                    overwrite.send_messages = False
-                    overwrite.add_reactions = False
                     response = 'Period paused, submissions disabled. Advance again to start voting.'
                 # Handle voting state
                 elif period.state == PeriodStates.PAUSED:
                     _guild: discord.Guild = ctx.guild
                     await self.bot.add_voting_reactions(channel=channel, submissions=period.submissions)
-                    overwrite.send_messages = False
                     overwrite.add_reactions = True
                     response = 'Period unpaused, reactions allowed. Advance again to stop voting and finalize the tallying.'
                 # Print period submissions
                 elif period.state == PeriodStates.VOTING:
-                    overwrite.send_messages = False
-                    overwrite.add_reactions = False
                     response = 'Period stopped. Reactions and submissions disabled. Advance again to start a new period.'
                     # TODO: Fetch all submissions related to this period and show a embed
 
@@ -278,9 +274,7 @@ class ContestCog(commands.Cog):
             if payload.channel_id == guild.submission_channel:
                 channel: discord.TextChannel = self.bot.get_channel(payload.channel_id)
                 message: discord.PartialMessage = channel.get_partial_message(payload.message_id)
-                if not helpers.is_upvote(payload.emoji):
-                    await message.remove_reaction(payload.emoji, payload.member)
-                else:
+                if helpers.is_upvote(payload.emoji):
                     submission: Submission = session.query(Submission).get(payload.message_id)
                     if submission is None:
                         logger.warning(f'Upvote reaction added to message {payload.message_id}, but no Submission found in database.')
@@ -290,6 +284,11 @@ class ContestCog(commands.Cog):
                         self_reacted = await submission.verify(await message.fetch(), self.bot.user)
                         if not self_reacted:
                             await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
+                else:
+                    # Remove the emoji since it's not supposed to be there anyways.
+                    # If permissions were setup correctly, only moderators or admins should be able to trigger this.
+                    await message.remove_reaction(payload.emoji, payload.member)
+
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
