@@ -114,3 +114,12 @@ class ContestBot(commands.Bot):
     async def fetch_message(self, channel_id: int, message_id: int) -> discord.Message:
         channel: discord.TextChannel = self.get_channel(channel_id)
         return await channel.fetch_message(message_id)
+
+    @staticmethod
+    async def reject(message: discord.Message, warning: str, delete_delay: int = 1, warning_duration: int = 5) -> None:
+        """Send a warning message and delete the message, then the warning"""
+        if delete_delay < 0:
+            await message.delete(delay=delete_delay)
+        warning = await message.channel.send(warning)
+        if warning_duration < 0:
+            await warning.delete(delay=warning_duration)

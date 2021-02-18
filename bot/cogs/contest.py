@@ -184,30 +184,25 @@ class ContestCog(commands.Cog):
 
                 # Ensure that the submission contains at least one attachment
                 if len(attachments) == 0:
-                    await message.delete(delay=1)
-                    warning = await channel.send(
-                            f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
-                    await warning.delete(delay=5)
+                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
                 # Ensure the image contains no more than one attachment
                 elif len(attachments) > 1:
-                    await message.delete(delay=1)
-                    warning = await channel.send(
-                            f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
-                    await warning.delete(delay=5)
+                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
+                elif guild.current_period is None:
+                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} A period has not been started. '
+                                                   f'Submissions should not be allowed at this moment.')
+                elif guild.current_period != PeriodStates.SUBMISSIONS:
+                    logger.warning(f'Valid submission was sent outside of Submissions in {channel.id}/{message.id}. Permissions error? Removing.')
+                    await message.delete()
                 else:
                     attachment = attachments[0]
                     # TODO: Add helper for displaying error/warning messages
                     if attachment.is_spoiler():
-                        await message.delete(delay=1)
-                        warning = await channel.send(':no_entry_sign: Attachment must not make use of a spoiler.')
-                        await warning.delete(delay=5)
+                        await self.bot.reject(message, ':no_entry_sign: Attachment must not make use of a spoiler.')
                     elif attachment.width is None:
-                        await message.delete(delay=1)
-                        warning = await channel.send(':no_entry_sign: Attachment must be a image or video.')
-                        await warning.delete(delay=5)
+                        await self.bot.reject(message, ':no_entry_sign: Attachment must be a image or video.')
                     else:
-                        last_submission: Submission = session.query(Submission).filter_by(period=guild.current_period,
-                                                                                          user=message.author.id).first()
+                        last_submission: Submission = session.query(Submission).filter_by(period=guild.current_period, user=message.author.id).first()
                         if last_submission is not None:
                             # delete last submission
                             submission_msg = await channel.fetch_message(last_submission.id)
@@ -279,12 +274,17 @@ class ContestCog(commands.Cog):
                     if submission is None:
                         logger.warning(f'Upvote reaction added to message {payload.message_id}, but no Submission found in database.')
                     else:
-                        await submission.update(self.bot, message=await message.fetch())
+                        period: Period = submission.period
+                        if period.active and period.state == PeriodStates.VOTING:
+                            await submission.update(self.bot, message=await message.fetch())
+                        else:
+                            logger.warning(f'User attempted to add a reaction to a Submission outside '
+                                           f'of it\'s Period activity ({period.active}/{period.state}).')
+                            await message.remove_reaction(payload.emoji, payload.member)
                 else:
                     # Remove the emoji since it's not supposed to be there anyways.
                     # If permissions were setup correctly, only moderators or admins should be able to trigger this.
                     await message.remove_reaction(payload.emoji, payload.member)
-
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
