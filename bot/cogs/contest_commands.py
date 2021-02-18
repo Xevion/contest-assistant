@@ -210,13 +210,13 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
             period: Period = guild.current_period
 
             if period is None or not period.active:
-                await ctx.send('No period is currently active.')
+                await ctx.send(embed=helpers.error_embed(message='No period is currently active.'))
             else:
                 overwrite = discord.PermissionOverwrite()
                 overwrite.send_messages = False
                 overwrite.add_reactions = False
                 period.deactivate()
-                await ctx.send('The current period has been closed.')
+                await ctx.send(embed=helpers.success_embed(message='The current period has been closed.'))
 
     @commands.command()
     @commands.guild_only()

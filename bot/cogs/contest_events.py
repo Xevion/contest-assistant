@@ -40,7 +40,7 @@ class ContestEventsCog(commands.Cog):
                     await self.bot.reject(message, f'Each submission must contain exactly one image.')
                 elif guild.current_period is None:
                     await self.bot.reject(message, f'A period has not been started. Submissions should not be allowed at this moment.')
-                elif guild.current_period != PeriodStates.SUBMISSIONS:
+                elif guild.current_period.state != PeriodStates.SUBMISSIONS:
                     logger.warning(f'Valid submission was sent outside of Submissions in'
                                    f' {channel.id}/{message.id}. Permissions error? Removing.')
                     await message.delete()

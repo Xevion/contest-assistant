@@ -292,11 +292,15 @@ class Period(Base):
 
     def permission_explanation(self) -> str:
         """Returns a quick explanation of the period's current state."""
-        if self.state == PeriodStates.READY: return 'No voting or submissions quite yet.'
-        elif self.state == PeriodStates.SUBMISSIONS: return 'Submissions open; upload now.'
-        elif self.state == PeriodStates.PAUSED: return 'Submissions closed. No voting *yet*.'
-        elif self.state == PeriodStates.VOTING: return 'Vote on submissions now.'
-        elif self.state == PeriodStates.FINISHED: return 'Voting closed. Contest results available.'
+        if self.active:
+            if self.state == PeriodStates.READY: return 'No voting or submissions quite yet.'
+            elif self.state == PeriodStates.SUBMISSIONS: return 'Submissions open; upload now.'
+            elif self.state == PeriodStates.PAUSED: return 'Submissions closed. No voting *yet*.'
+            elif self.state == PeriodStates.VOTING: return 'Vote on submissions now.'
+        else:
+            if self.state == PeriodStates.FINISHED: return 'Voting closed. Contest results available.'
+            elif self.state == PeriodStates.VOTING: return 'Voting closed (prematurely). Contest results available.'
+            else: return 'Closed prematurely. Submissions were remembered, but no votes were cast.'
         return "Error."
 
     def __repr__(self) -> str:
