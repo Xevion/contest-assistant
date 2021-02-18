@@ -150,8 +150,6 @@ class ContestEventsCog(commands.Cog):
         except ValueError:
             pass
 
-        # TODO: Only update the votecount during the VOTING period!
-
         with self.bot.get_session() as session:
             guild: Guild = session.query(Guild).get(payload.guild_id)
             if payload.channel_id == guild.submission_channel and helpers.is_upvote(payload.emoji):
@@ -172,9 +170,12 @@ class ContestEventsCog(commands.Cog):
                 if submission is None:
                     logger.warning(f'Witnessed reactions removed from message {payload.message_id}, but no Submission found in database.')
                 else:
-                    submission.votes = []
-                    message = self.bot.get_message(payload.channel_id, payload.message_id)
-                    await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
+                    if submission.period.voting:
+                        submission.votes = []
+                        message = self.bot.get_message(payload.channel_id, payload.message_id)
+                        await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
+                    else:
+                        logger.debug(f'All reactions cleared on Submission ({submission.id}) outside of it\'s voting period.')
 
     @commands.Cog.listener()
     async def on_raw_reaction_clear_emoji(self, payload: discord.RawReactionClearEmojiEvent) -> None:
@@ -188,9 +189,12 @@ class ContestEventsCog(commands.Cog):
                         logger.warning(f'Witnessed all upvote reactions removed from message {payload.message_id},'
                                        f' but no Submission found in database.')
                     else:
-                        submission.votes = []
-                        message = self.bot.get_message(payload.channel_id, payload.message_id)
-                        await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
+                        if submission.period.voting:
+                            submission.votes = []
+                            message = self.bot.get_message(payload.channel_id, payload.message_id)
+                            await message.add_reaction(self.bot.get_emoji(constants.Emoji.UPVOTE))
+                        else:
+                            logger.debug(f'Upvote reactions cleared on Submission ({submission.id}) outside of it\'s voting period.')
 
 
 def setup(bot) -> None:

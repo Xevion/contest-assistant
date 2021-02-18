@@ -160,8 +160,14 @@ class Submission(Base):
 
         return found
 
-    async def update(self, bot: 'ContestBot', message: discord.Message = None) -> None:
-        """Updates the number of votes in the database by thoroughly evaluating the message."""
+    async def update(self, bot: 'ContestBot', message: discord.Message = None, force: bool = True) -> None:
+        """
+        Updates the number of votes in the database by thoroughly evaluating the message.
+
+        :param bot: A instance of the bot to use to query and act on messages.
+        :param message: The message correlating to this Submission
+        :param force: If True, update the submission even outside of it's relevant voting period.
+        """
         saw_self, current, old = False, set(), set(self.votes)  # Votes currently on the message and votes only on the submission
 
         for reaction in message.reactions:
@@ -199,7 +205,8 @@ class Submission(Base):
                             )
 
         # Update the current list of votes
-        self.votes = list(current)
+        if self.period.voting:
+            self.votes = list(current)
 
         if len(to_remove) > 0:
             if report: report += ' '
@@ -207,7 +214,7 @@ class Submission(Base):
         if report: logger.debug(report)
 
         # If we never saw ourselves in the reaction, add the Upvote emoji
-        if not saw_self:
+        if not saw_self and self.period.voting:
             await message.add_reaction(constants.Emoji.UPVOTE)
 
 
