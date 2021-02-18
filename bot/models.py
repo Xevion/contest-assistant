@@ -83,10 +83,23 @@ class Submission(Base):
     id = Column(Integer, primary_key=True)  # Doubles as the ID this Guild has in Discord
     user = Column(Integer)  # The ID of the user who submitted it.
     timestamp = Column(DateTime)  # When the Submission was posted
-    votes: List[int] = Column(NestedMutableList.as_mutable(JSON))  # A list of IDs correlating to users who voted on this submission.
+
+    _votes: List[int] = Column("votes", NestedMutableList.as_mutable(JSON))  # A list of IDs correlating to users who voted on this submission.
+    count = Column(Integer, default=0, nullable=False)
 
     period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
     period = relationship("Period", back_populates="submissions")  # The period this submission was made in.
+
+    @property
+    def votes(self) -> List[int]:
+        """Getter function for _votes descriptor."""
+        return self._votes
+
+    @votes.setter
+    def votes(self, votes: List[int]) -> None:
+        """"Setter function for _votes descriptor. Modifies count column."""
+        self._votes = votes
+        self.count = len(votes)
 
     def __init__(self, **kwds):
         # Adds default column behavior for Mutable JSON votes column
@@ -95,11 +108,6 @@ class Submission(Base):
 
     def __repr__(self) -> str:
         return 'Submission(id={id}, user={user}, period={period_id}, {votes})'.format(**self.__dict__)
-
-    @property
-    def count(self) -> int:
-        """The number of votes cast for this submission."""
-        return len(self.votes)
 
     def increment(self, user: int) -> None:
         """Increase the number of votes by one."""
@@ -226,6 +234,21 @@ class Period(Base):
     voting_time = Column(DateTime, nullable=True)  # When this period switched to the Voting state.
     finished_time = Column(DateTime, nullable=True)  # When this period switched to the Finished state.
 
+    async def get_submission_messages(self, bot: 'ContestBot') -> List[Tuple[Submission, discord.Message]]:
+        """
+        Returns a list of tuples containing Submission objects and full Discord Messages
+
+        :param bot: the active Discord Bot instance
+        """
+        found = []
+        for submission in self.submissions:
+            try:
+                message = await bot.fetch_message(self.guild.submission_channel, submission.id)
+                found.append((submission, message))
+            except discord.NotFound:
+                found.append((submission, None))
+        return found
+
     @check_not_finished
     def advance_state(self) -> PeriodStates:
         """
@@ -245,6 +268,11 @@ class Period(Base):
 
         self.state = next_state
         return next_state
+
+    @property
+    def voting(self) -> bool:
+        """Whether or not the Period (should) be allowing voting updates through."""
+        return self.active and not self.completed and self.state == PeriodStates.VOTING
 
     @check_not_finished
     def deactivate(self) -> None:
