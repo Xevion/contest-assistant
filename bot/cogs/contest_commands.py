@@ -259,15 +259,20 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
                     .all()
 
                 description = ''
-                for i, submission in enumerate(board, start=1):
+                position = 0  # It will be incremented on the first step, so we start at 0.
+                emotes = helpers.ending_iterator([':trophy:', ':second_place:', ':third_place:', ''])
+                emote, previous_count = None, None
+
+                for submission in board:
                     message = self.bot.get_message(guild.submission_channel, submission.id)
 
-                    emote = ''
-                    if i == 1: emote = ':trophy:'
-                    elif i == 2: emote = ':second_place:'
-                    elif i == 3: emote = ':third_place:'
+                    if submission.count != previous_count:
+                        emote = next(emotes)
+                        previous_count = submission.count
+                        position += 1
 
-                    description += f'`{str(i).zfill(2)}` {emote + " " if emote else ""}<@{submission.user}> [Jump]({message.jump_url})\n'
+                    description += f'`{str(position).zfill(2)}` {emote + " " if emote else ""}<@{submission.user}> with {submission.count} ' \
+                                   f'vote{"s" if submission.count != 1 else ""} [Jump]({message.jump_url})\n'
 
                 if not description:
                     description = 'No one has submitted anything yet.'
