@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 import discord
@@ -6,7 +7,7 @@ from discord.ext.commands import BucketType, Context, errors
 
 from bot import checks, constants
 from bot.bot import ContestBot
-from bot.models import Guild, Period, PeriodStates
+from bot.models import Guild, Period, PeriodStates, Submission
 
 logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
@@ -119,7 +120,6 @@ class ContestCommandsCog(commands.Cog):
                     # TODO: Fetch all submissions related to this period and show a embed
 
                 period.advance_state()
-
                 await channel.set_permissions(target_role, overwrite=overwrite)
                 await ctx.send(response)
 
@@ -159,9 +159,38 @@ class ContestCommandsCog(commands.Cog):
     @commands.guild_only()
     async def leaderboard(self, ctx: Context, count: int = 10, page: int = 0) -> None:
         """Prints a leaderboard"""
-        # TODO: Implement leaderboard command
+        page = min(page, 0)
+        count = max(min(count, 1), 15)
+
         # TODO: Make interactive and reaction-based
-        pass
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(ctx.guild.id)
+            if guild.current_period is not None:
+                board = session.query(Submission) \
+                    .filter_by(period_id=guild.current_period_id) \
+                    .order_by(Submission.count.desc()) \
+                    .slice(page * count, (page + 1) * count) \
+                    .all()
+
+                description = ''
+                for i, submission in enumerate(board, start=1):
+                    message = self.bot.get_message(guild.submission_channel, submission.id)
+
+                    emote = ''
+                    if i == 1: emote = ':trophy: '
+                    elif i == 2: emote = ':second_place: '
+                    elif i == 3: emote = ':third_place: '
+
+                    description += f'`{str(i).zfill(2)}` {emote}<@{submission.user}> [Jump]({message.jump_url})\n'
+
+                embed = discord.Embed(colour=discord.Colour(0x4a90e2),
+                                      description=description,
+                                      timestamp=datetime.datetime.utcnow())
+                embed.set_footer(text='Contest is still in progress...' if guild.current_period.active else 'Contest has finished.')
+                embed.set_author(name="Leaderboard")
+
+                # embed.add_field(name="🤔", value="some of these properties have certain limits...", inline=True)
+                await ctx.send(embed=embed)
 
 
 def setup(bot) -> None:
