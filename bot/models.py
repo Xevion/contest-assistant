@@ -284,5 +284,14 @@ class Period(Base):
         self.finished_time = datetime.datetime.utcnow()
         self.active = False
 
+    def permission_explanation(self) -> str:
+        """Returns a quick explanation of the period's current state."""
+        if self.state == PeriodStates.READY: return 'No voting or submissions quite yet.'
+        elif self.state == PeriodStates.SUBMISSIONS: return 'Submissions open; upload now.'
+        elif self.state == PeriodStates.PAUSED: return 'Submissions closed. No voting *yet*.'
+        elif self.state == PeriodStates.VOTING: return 'Vote on submissions now.'
+        elif self.state == PeriodStates.FINISHED: return 'Voting closed. Contest results available.'
+        return "Error."
+
     def __repr__(self) -> str:
         return 'Period(id={id}, guild={guild_id}, {state.name}, active={active})'.format(**self.__dict__)

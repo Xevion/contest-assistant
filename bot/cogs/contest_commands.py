@@ -152,8 +152,22 @@ class ContestCommandsCog(commands.Cog):
     @commands.guild_only()
     async def status(self, ctx: Context) -> None:
         """Provides the bot's current state in relation to internal configuration and the server's contest, if active."""
-        # TODO: Implement status command
-        pass
+        with self.bot.get_session() as session:
+            guild: Guild = session.query(Guild).get(ctx.guild.id)
+            period: Period = guild.current_period
+            embed = discord.Embed(color=discord.Color(0x4a90e2), title='Status')
+
+            value = f'<#{guild.submission_channel}>' if guild.submission_channel else 'Please set a submission channel.'
+            embed.add_field(name='Submission Channel', value=value)
+
+            if period is not None:
+                value = 'None' if guild.current_period is None else guild.current_period.state.name.capitalize()
+                embed.add_field(name='Status', inline=False, value=f'{value} - {period.permission_explanation()}')
+                value = len(period.submissions)
+                value = str(value) + '  submission' + ('s' if value > 1 or value == 0 else '')
+                embed.add_field(name='Submissions', inline=False, value=value)
+
+            await ctx.send(embed=embed)
 
     @commands.command()
     @commands.guild_only()
@@ -183,11 +197,11 @@ class ContestCommandsCog(commands.Cog):
 
                     description += f'`{str(i).zfill(2)}` {emote}<@{submission.user}> [Jump]({message.jump_url})\n'
 
-                embed = discord.Embed(colour=discord.Colour(0x4a90e2),
+                embed = discord.Embed(title='Leaderboard',
+                                      colour=discord.Colour(0x4a90e2),
                                       description=description,
                                       timestamp=datetime.datetime.utcnow())
                 embed.set_footer(text='Contest is still in progress...' if guild.current_period.active else 'Contest has finished.')
-                embed.set_author(name="Leaderboard")
 
                 # embed.add_field(name="🤔", value="some of these properties have certain limits...", inline=True)
                 await ctx.send(embed=embed)
