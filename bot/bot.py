@@ -1,7 +1,7 @@
 import logging
 from contextlib import contextmanager
 from datetime import datetime
-from typing import ContextManager, List, Optional
+from typing import ContextManager, List, Optional, Tuple
 
 import discord
 from discord.ext import commands
@@ -22,6 +22,9 @@ class ContestBot(commands.Bot):
 
         self.engine = engine
         self.Session = sessionmaker(bind=engine)
+
+        self.expected_msg_deletions: List[int] = []
+        self.expected_react_deletions: List[Tuple[int, int]] = []
 
     @contextmanager
     def get_session(self, autocommit=True, autoclose=True, rollback=True) -> ContextManager[Session]:
@@ -108,10 +111,12 @@ class ContestBot(commands.Bot):
                 await message.add_reaction(self.get_emoji(constants.Emoji.UPVOTE))
 
     def get_message(self, channel_id: int, message_id: int) -> discord.PartialMessage:
+        """Get a PartialMessage object given raw integer IDs."""
         channel: discord.TextChannel = self.get_channel(channel_id)
         return channel.get_partial_message(message_id)
 
     async def fetch_message(self, channel_id: int, message_id: int) -> discord.Message:
+        """Fetch a full Message object given raw integer IDs."""
         channel: discord.TextChannel = self.get_channel(channel_id)
         return await channel.fetch_message(message_id)
 
