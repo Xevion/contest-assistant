@@ -1,5 +1,5 @@
 import logging
-from typing import List, Tuple
+from typing import List
 
 import discord
 from discord.ext import commands
@@ -21,6 +21,7 @@ logger.setLevel(constants.LOGGING_LEVEL)
 
 class ContestEventsCog(commands.Cog):
     """Manages all non-command events related to contests."""
+
     def __init__(self, bot: ContestBot):
         self.bot = bot
 
@@ -37,18 +38,18 @@ class ContestEventsCog(commands.Cog):
 
                 # Ensure that the submission contains at least one attachment
                 if len(attachments) == 0:
-                    await self.bot.reject(message,
-                                          f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
+                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} '
+                                                   f'Each submission must contain exactly one image.')
                 # Ensure the image contains no more than one attachment
                 elif len(attachments) > 1:
-                    await self.bot.reject(message,
-                                          f':no_entry_sign: {message.author.mention} Each submission must contain exactly one image.')
+                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} '
+                                                   f'Each submission must contain exactly one image.')
                 elif guild.current_period is None:
                     await self.bot.reject(message, f':no_entry_sign: {message.author.mention} A period has not been started. '
                                                    f'Submissions should not be allowed at this moment.')
                 elif guild.current_period != PeriodStates.SUBMISSIONS:
-                    logger.warning(
-                        f'Valid submission was sent outside of Submissions in {channel.id}/{message.id}. Permissions error? Removing.')
+                    logger.warning(f'Valid submission was sent outside of Submissions in'
+                                   f' {channel.id}/{message.id}. Permissions error? Removing.')
                     await message.delete()
                 else:
                     attachment = attachments[0]

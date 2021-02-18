@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import BucketType, Context, errors
 
-from bot import checks, constants
+from bot import checks, constants, helpers
 from bot.bot import ContestBot
 from bot.models import Guild, Period, PeriodStates, Submission
 
@@ -13,9 +13,9 @@ logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
 
 
-class ContestCommandsCog(commands.Cog):
+class ContestCommandsCog(commands.Cog, name='Contest'):
     """
-    Manages all commands related to contests.
+    Commands related to creating, advancing, and querying contests.
     """
 
     def __init__(self, bot: ContestBot) -> None:
@@ -32,12 +32,13 @@ class ContestCommandsCog(commands.Cog):
 
             if 1 <= len(new_prefix) <= 2:
                 if guild.prefix == new_prefix:
-                    return await ctx.send(f':no_entry_sign:  The prefix is already `{new_prefix}`.')
+                    return await ctx.send(embed=helpers.error_embed(message=f'The prefix is already `{new_prefix}`.'))
                 else:
                     guild.prefix = new_prefix
-                    return await ctx.send(f':white_check_mark:  Prefix changed to `{new_prefix}`.')
+                    return await ctx.send(embed=helpers.success_embed(message=f'Prefix changed to `{new_prefix}`.'))
             else:
-                return await ctx.send(':no_entry_sign: Invalid argument. Prefix must be 1 or 2 characters long.')
+                return await ctx.send(embed=helpers.error_embed(
+                        message='Invalid argument. Prefix must be 1 or 2 characters long.'))
 
     @commands.command()
     @commands.guild_only()
@@ -49,11 +50,14 @@ class ContestCommandsCog(commands.Cog):
             guild: Guild = session.query(Guild).get(ctx.guild.id)
 
             if guild.submission_channel is not None and guild.submission_channel == new_submission.id:
-                await ctx.send(f':no_entry_sign:  The submission channel is already set to {new_submission.mention}.')
+                await ctx.send(embed=helpers.error_embed(
+                        message=f'The submission channel is already set to {new_submission.mention}.'))
             else:
                 # TODO: Add channel permissions resetting/migration
                 guild.submission_channel = new_submission.id
-                await ctx.send(f':white_check_mark:  Submission channel changed to {new_submission.mention}.')
+                await ctx.send(embed=helpers.success_embed(
+                        message=f':white_check_mark:  Submission channel changed to {new_submission.mention}.'
+                ))
 
     # noinspection PyDunderSlots,PyUnresolvedReferences
     @commands.command()
@@ -83,14 +87,14 @@ class ContestCommandsCog(commands.Cog):
                     overwrite.send_messages = False
                     overwrite.add_reactions = False
                     await self.bot.get_channel(guild.submission_channel).set_permissions(ctx.guild.default_role, overwrite=overwrite)
-                    await ctx.send('Period created, channel permissions set.')
+                    await ctx.send(embed=helpers.success_embed(message='Period created, channel permissions set.'))
 
                 period = Period(guild_id=guild.id)
                 session.add(period)
                 session.commit()
 
                 guild.current_period = period
-                await ctx.send('New period started - submissions and voting disabled.')
+                await ctx.send(embed=helpers.success_embed(message='New period started - submissions and voting disabled.'))
             else:
                 channel: discord.TextChannel = self.bot.get_channel(guild.submission_channel)
                 target_role: discord.Role = ctx.guild.default_role
@@ -121,13 +125,13 @@ class ContestCommandsCog(commands.Cog):
 
                 period.advance_state()
                 await channel.set_permissions(target_role, overwrite=overwrite)
-                await ctx.send(response)
+                await ctx.send(embed=helpers.success_embed(message=response))
 
     @advance.error
     async def advance_error(self, error: errors.CommandError, ctx: Context) -> None:
         if isinstance(error, errors.MissingPermissions):
-            await ctx.send(
-                    'Check that the bot can actually modify roles, add reactions, see messages and send messages within this channel.')
+            await ctx.send(embed=helpers.error_embed(
+                    message='Check that the bot can actually modify roles, add reactions, see messages and send messages within this channel.'))
 
     # noinspection PyDunderSlots, PyUnresolvedReferences
     @commands.command()
@@ -155,7 +159,7 @@ class ContestCommandsCog(commands.Cog):
         with self.bot.get_session() as session:
             guild: Guild = session.query(Guild).get(ctx.guild.id)
             period: Period = guild.current_period
-            embed = discord.Embed(color=discord.Color(0x4a90e2), title='Status')
+            embed = discord.Embed(color=constants.GENERAL_COLOR, title='Status')
 
             value = f'<#{guild.submission_channel}>' if guild.submission_channel else 'Please set a submission channel.'
             embed.add_field(name='Submission Channel', value=value)
@@ -197,8 +201,11 @@ class ContestCommandsCog(commands.Cog):
 
                     description += f'`{str(i).zfill(2)}` {emote}<@{submission.user}> [Jump]({message.jump_url})\n'
 
+                if not description:
+                    description = 'No one has submitted anything yet.'
+
                 embed = discord.Embed(title='Leaderboard',
-                                      colour=discord.Colour(0x4a90e2),
+                                      color=constants.GENERAL_COLOR,
                                       description=description,
                                       timestamp=datetime.datetime.utcnow())
                 embed.set_footer(text='Contest is still in progress...' if guild.current_period.active else 'Contest has finished.')
