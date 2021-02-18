@@ -100,13 +100,13 @@ class Submission(Base):
         self._votes = votes
         self.count = len(votes)
 
-    def __init__(self, **kwds):
+    def __init__(self, **kwargs):
         # Adds default column behavior for Mutable JSON votes column
-        kwds.setdefault("votes", [])
-        super().__init__(**kwds)
+        kwargs.setdefault("votes", [])
+        super().__init__(**kwargs)
 
     def __repr__(self) -> str:
-        return 'Submission(id={id}, user={user}, period={period_id}, {votes})'.format(**self.__dict__)
+        return 'Submission(id={id}, user={user}, period={period_id}, {count} votes)'.format(**self.__dict__)
 
     def increment(self, user: int) -> None:
         """Increase the number of votes by one."""
@@ -148,7 +148,7 @@ class Submission(Base):
             # Find what users voted for this submission that we are clearing
             votes = set(submission.votes)
             same = votes.intersection(users)
-            if len(same) > 0:
+            if len(same) == 0:
                 continue
 
             # Remove votes from the submission by said users
@@ -201,7 +201,7 @@ class Submission(Base):
                         for reaction_marker in reaction_tuples:
                             await message_to_clear.remove_reaction(
                                     bot.get_emoji(constants.Emoji.UPVOTE),
-                                    message.guild.get_member(reaction_marker.user)
+                                    await message.guild.fetch_member(reaction_marker.user)
                             )
 
         # Update the current list of votes
@@ -300,7 +300,8 @@ class Period(Base):
         else:
             if self.state == PeriodStates.FINISHED: return 'Voting closed. Contest results available.'
             elif self.state == PeriodStates.VOTING: return 'Voting closed (prematurely). Contest results available.'
-            else: return 'Closed prematurely. Submissions were remembered, but no votes were cast.'
+            elif self.state == PeriodStates.READY: return 'Closed before any submissions could be submitted.'
+            else: return 'Closed prematurely. Submissions were remembered, but no votes could be cast.'
         return "Error."
 
     def __repr__(self) -> str:

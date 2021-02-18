@@ -121,6 +121,7 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
     # noinspection PyDunderSlots,PyUnresolvedReferences
     @commands.command()
     @commands.guild_only()
+    @commands.bot_has_guild_permissions(add_reactions=True)
     @commands.has_permissions(send_messages=True, add_reactions=True, read_message_history=True, manage_roles=True)
     @commands.max_concurrency(1, per=BucketType.guild, wait=True)
     @checks.privileged()
@@ -231,7 +232,8 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
             embed.add_field(name='Submission Channel', value=value)
 
             if period is not None:
-                value = 'None' if guild.current_period is None else guild.current_period.state.name.capitalize()
+                value = 'None' if guild.current_period is None else \
+                    (guild.current_period.state.name.capitalize() if guild.current_period.active else 'Finished')
                 embed.add_field(name='Status', inline=False, value=f'{value} - {period.permission_explanation()}')
                 value = len(period.submissions)
                 value = str(value) + '  submission' + ('s' if value > 1 or value == 0 else '')
