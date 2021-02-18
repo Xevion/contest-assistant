@@ -23,9 +23,8 @@ logger.setLevel(constants.LOGGING_LEVEL)
 
 Base = declarative_base()
 
-
-# TODO: Setup and test basic automatic migration.
-
+# TODO: Contest names
+# TODO: Refactor Period into Contest (major)
 
 class PeriodStates(enum.Enum):
     """

@@ -25,7 +25,8 @@ if __name__ == "__main__":
                             logging.StreamHandler()
                         ])
 
-    initial_extensions = ['bot.cogs.contest']
+    initial_extensions = ['bot.cogs.contest_commands',
+                          'bot.cogs.contest_events']
 
     engine = load_db()
     bot = ContestBot(engine, description='A assistant for the Photography Lounge\'s monday contests')

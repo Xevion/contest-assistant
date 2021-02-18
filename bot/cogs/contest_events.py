@@ -12,11 +12,7 @@ logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
 
 
-# TODO: Add command error handling to all commands
-# TODO: Use embeds in all bot responses
 # TODO: Look into migrating from literals to i18n-ish representation of all messages & formatting
-# TODO: Contest names
-# TODO: Refactor Period into Contest (major)
 
 
 class ContestEventsCog(commands.Cog):
@@ -38,15 +34,12 @@ class ContestEventsCog(commands.Cog):
 
                 # Ensure that the submission contains at least one attachment
                 if len(attachments) == 0:
-                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} '
-                                                   f'Each submission must contain exactly one image.')
+                    await self.bot.reject(message, f'Each submission must contain exactly one image.')
                 # Ensure the image contains no more than one attachment
                 elif len(attachments) > 1:
-                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} '
-                                                   f'Each submission must contain exactly one image.')
+                    await self.bot.reject(message, f'Each submission must contain exactly one image.')
                 elif guild.current_period is None:
-                    await self.bot.reject(message, f':no_entry_sign: {message.author.mention} A period has not been started. '
-                                                   f'Submissions should not be allowed at this moment.')
+                    await self.bot.reject(message, f'A period has not been started. Submissions should not be allowed at this moment.')
                 elif guild.current_period != PeriodStates.SUBMISSIONS:
                     logger.warning(f'Valid submission was sent outside of Submissions in'
                                    f' {channel.id}/{message.id}. Permissions error? Removing.')
@@ -55,9 +48,9 @@ class ContestEventsCog(commands.Cog):
                     attachment = attachments[0]
                     # TODO: Add helper for displaying error/warning messages
                     if attachment.is_spoiler():
-                        await self.bot.reject(message, ':no_entry_sign: Attachment must not make use of a spoiler.')
+                        await self.bot.reject(message, 'Attachment must not make use of a spoiler.')
                     elif attachment.width is None:
-                        await self.bot.reject(message, ':no_entry_sign: Attachment must be a image or video.')
+                        await self.bot.reject(message, 'Attachment must be a image or video.')
                     else:
                         last_submission: Submission = session.query(Submission).filter_by(period=guild.current_period,
                                                                                           user=message.author.id).first()
@@ -156,6 +149,8 @@ class ContestEventsCog(commands.Cog):
             return
         except ValueError:
             pass
+
+        # TODO: Only update the votecount during the VOTING period!
 
         with self.bot.get_session() as session:
             guild: Guild = session.query(Guild).get(payload.guild_id)

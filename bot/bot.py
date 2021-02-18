@@ -9,7 +9,7 @@ from discord.ext import commands
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from bot import constants
+from bot import constants, helpers
 from bot.models import Guild, Period, Submission
 
 logger = logging.getLogger(__file__)
@@ -63,6 +63,8 @@ class ContestBot(commands.Bot):
                     logger.warning(
                             f'Guild {guild.name} ({guild.id}) was not inside database on ready. Bot was disconnected or did not add it properly...')
                     session.add(Guild(id=guild.id))
+
+        # TODO: Scan all messages on start for current period and check for new periods/updated vote counts.
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """Handles adding or reactivating a Guild in the database."""
@@ -121,10 +123,7 @@ class ContestBot(commands.Bot):
         return await channel.fetch_message(message_id)
 
     @staticmethod
-    async def reject(message: discord.Message, warning: str, delete_delay: int = 1, warning_duration: int = 5) -> None:
+    async def reject(message: discord.Message, warning: str, delete_delay: int = 2, warning_duration: int = 5) -> None:
         """Send a warning message and delete the message, then the warning"""
-        if delete_delay < 0:
-            await message.delete(delay=delete_delay)
-        warning = await message.channel.send(warning)
-        if warning_duration < 0:
-            await warning.delete(delay=warning_duration)
+        if delete_delay > 0: await message.delete(delay=delete_delay)
+        await message.channel.send(embed=helpers.error_embed(message=warning), delete_after=warning_duration, reference=message)

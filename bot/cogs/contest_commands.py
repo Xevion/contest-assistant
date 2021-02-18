@@ -1,4 +1,3 @@
-import datetime
 import logging
 
 import discord
@@ -13,6 +12,8 @@ logger = logging.getLogger(__file__)
 logger.setLevel(constants.LOGGING_LEVEL)
 
 
+# TODO: Add command error handling to all commands
+
 class ContestCommandsCog(commands.Cog, name='Contest'):
     """
     Commands related to creating, advancing, and querying contests.
@@ -20,6 +21,64 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
 
     def __init__(self, bot: ContestBot) -> None:
         self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx: Context, error: discord.ext.commands.CommandError):
+        """
+        The event triggered when an error is raised while invoking a command.
+
+        Taken and slightly edited from https://gist.github.com/EvieePy/7822af90858ef65012ea500bcecf1612
+
+        :param error: The context used for command invocation.
+        :param ctx: The exception raised.
+        """
+
+        # This prevents any commands with local handlers being handled here in on_command_error.
+        if hasattr(ctx.command, 'on_error'):
+            return
+
+        # This prevents any cogs with an overwritten cog_command_error being handled here.
+        cog = ctx.cog
+        if cog and cog._get_overridden_method(cog.cog_command_error) is not None:
+            return
+
+        ignored = (commands.CommandNotFound,)
+
+        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
+        # If nothing is found. We keep the exception passed to on_command_error.
+        error = getattr(error, 'original', error)
+
+        # Anything in ignored will return and prevent anything happening.
+        if isinstance(error, ignored):
+            return
+
+        if isinstance(error, commands.UserInputError):
+            message = ''
+            if isinstance(error, commands.BadArgument):
+                if isinstance(error, commands.ChannelNotFound):
+                    message = 'Invalid channel - I couldn\'t find that channel.'
+                elif isinstance(error, commands.RoleNotFound):
+                    message = 'Invalid role - I couldn\'t find that role'
+                elif isinstance(error, commands.ChannelNotReadable):
+                    message = 'Invalid channel - I couldn\'t read the contents of that channel.'
+                else:
+                    message = 'Invalid argument. Please check you entered everything correctly.'
+            if isinstance(error, commands.ArgumentParsingError):
+                message = 'I couldn\'t read the contents of your arguments properly. Check that you\'ve entered everything properly.'
+            if message:
+                await ctx.send(embed=helpers.error_embed(message=message))
+                return
+
+        if isinstance(error, commands.DisabledCommand):
+            await ctx.send(embed=helpers.error_embed(message=f'`{ctx.command}` has been disabled.'))
+        elif isinstance(error, commands.NoPrivateMessage):
+            try:
+                await ctx.send(embed=helpers.error_embed(message=f'`{ctx.command}` can not be used in Private Messages.'))
+            except discord.HTTPException:
+                pass
+        else:
+            # All other Errors not returned come here. And we can just print the default TraceBack.
+            logger.warning(f'Ignoring exception in command {ctx.command}', exc_info=error)
 
     @commands.command()
     @commands.guild_only()
@@ -69,10 +128,11 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
         """
         Advance the state of the current period pertaining to this Guild.
 
-        :param ctx:
+        :param ctx: The context used for command invocation.
         :param duration: If given, the advance command will be repeated once more after the duration (in seconds) has passed.
         :param pingback: Whether or not the user should be pinged back when the duration is passed.
         """
+        # TODO: Implement pingback argument
         # TODO: Ensure that permissions for this command are being correctly tested for.
         if duration is not None: assert duration >= 0, "If specified, duration must be more than or equal to zero."
 
@@ -129,6 +189,12 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
 
     @advance.error
     async def advance_error(self, error: errors.CommandError, ctx: Context) -> None:
+        """
+        `advance` command error handling.
+
+        :param error: The error raised while attempting to invoke the command
+        :param ctx: The context used for command invocation.
+        """
         if isinstance(error, errors.MissingPermissions):
             await ctx.send(embed=helpers.error_embed(
                     message='Check that the bot can actually modify roles, add reactions, see messages and send messages within this channel.'))
@@ -195,22 +261,18 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
                     message = self.bot.get_message(guild.submission_channel, submission.id)
 
                     emote = ''
-                    if i == 1: emote = ':trophy: '
-                    elif i == 2: emote = ':second_place: '
-                    elif i == 3: emote = ':third_place: '
+                    if i == 1: emote = ':trophy:'
+                    elif i == 2: emote = ':second_place:'
+                    elif i == 3: emote = ':third_place:'
 
-                    description += f'`{str(i).zfill(2)}` {emote}<@{submission.user}> [Jump]({message.jump_url})\n'
+                    description += f'`{str(i).zfill(2)}` {emote + " " if emote else ""}<@{submission.user}> [Jump]({message.jump_url})\n'
 
                 if not description:
                     description = 'No one has submitted anything yet.'
 
-                embed = discord.Embed(title='Leaderboard',
-                                      color=constants.GENERAL_COLOR,
-                                      description=description,
-                                      timestamp=datetime.datetime.utcnow())
+                embed = helpers.general_embed(title='Leaderboard', message=description, timestamp=True)
                 embed.set_footer(text='Contest is still in progress...' if guild.current_period.active else 'Contest has finished.')
 
-                # embed.add_field(name="🤔", value="some of these properties have certain limits...", inline=True)
                 await ctx.send(embed=embed)
 
 
