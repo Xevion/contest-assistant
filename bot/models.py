@@ -23,6 +23,7 @@ logger.setLevel(constants.LOGGING_LEVEL)
 
 Base = declarative_base()
 
+
 # TODO: Contest names
 # TODO: Refactor Period into Contest (major)
 
@@ -83,7 +84,8 @@ class Submission(Base):
     user = Column(Integer)  # The ID of the user who submitted it.
     timestamp = Column(DateTime)  # When the Submission was posted
 
-    _votes: List[int] = Column("votes", NestedMutableList.as_mutable(JSON))  # A list of IDs correlating to users who voted on this submission.
+    _votes: List[int] = Column("votes",
+                               NestedMutableList.as_mutable(JSON))  # A list of IDs correlating to users who voted on this submission.
     count = Column(Integer, default=0, nullable=False)
 
     period_id = Column(Integer, ForeignKey("period.id"))  # The id of the period this Submission relates to.
@@ -97,6 +99,7 @@ class Submission(Base):
     @votes.setter
     def votes(self, votes: List[int]) -> None:
         """"Setter function for _votes descriptor. Modifies count column."""
+        votes = list(dict.fromkeys(votes))  # Remove duplicate values while retaining order
         self._votes = votes
         self.count = len(votes)
 
@@ -104,9 +107,6 @@ class Submission(Base):
         # Adds default column behavior for Mutable JSON votes column
         kwargs.setdefault("votes", [])
         super().__init__(**kwargs)
-
-    def __repr__(self) -> str:
-        return 'Submission(id={id}, user={user}, period={period_id}, {count} votes)'.format(**self.__dict__)
 
     def increment(self, user: int) -> None:
         """Increase the number of votes by one."""
@@ -122,7 +122,8 @@ class Submission(Base):
             raise exceptions.DatabaseNoVoteException()
         self.votes.remove(user)
 
-    def clear_other_votes(self, ignore: Union[int, Iterable[int]], users: Union[int, Iterable[int]], session: 'Session') -> ReactionMarker:
+    def clear_other_votes(self, ignore: Union[int, Iterable[int]], users: Union[int, Iterable[int]],
+                          session: 'Session') -> List[ReactionMarker]:
         """
         Removes votes from all submissions in the database for a specific user.
         Returns a list of combination Message and User IDs
@@ -138,7 +139,7 @@ class Submission(Base):
         if len(ignore) == 0: logger.warning(f'Clearing ALL votes for user(s): {users}')
         if len(users) == 0: return []
 
-        found: List[Tuple[int, int]] = []
+        found = []
         submissions = session.query(Submission).filter(Submission.id != self.id).all()
         for submission in submissions:
             # Ignore submissions in the ignore list
@@ -205,7 +206,7 @@ class Submission(Base):
                             )
 
         # Update the current list of votes
-        if self.period.voting:
+        if self.period.voting or force:
             self.votes = list(current)
 
         if len(to_remove) > 0:
@@ -216,6 +217,9 @@ class Submission(Base):
         # If we never saw ourselves in the reaction, add the Upvote emoji
         if not saw_self and self.period.voting:
             await message.add_reaction(constants.Emoji.UPVOTE)
+
+    def __repr__(self) -> str:
+        return f'Submission(id={self.id}, user={self.user}, period={self.period_id}, {self.count} votes)'
 
 
 class Period(Base):
@@ -305,4 +309,4 @@ class Period(Base):
         return "Error."
 
     def __repr__(self) -> str:
-        return 'Period(id={id}, guild={guild_id}, {state.name}, active={active})'.format(**self.__dict__)
+        return f'Period(id={self.id}, guild={self.guild_id}, {self.state.name}, active={self.active})'

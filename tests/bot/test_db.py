@@ -53,21 +53,82 @@ def test_submission_decrement(session: Session) -> None:
         sub.decrement(1)
 
 
-def test_advance_state(session: Session) -> None:
-    guild = Guild(id=1)
-    per = Period(id=1, guild=guild)
-    session.add(per)
+def test_submission_count_descriptor(session: Session) -> None:
+    sub = Submission(id=1, user=1)
+    session.add(sub)
     session.commit()
 
-    assert per.state == PeriodStates.READY
-    per.advance_state()
-    assert per.state == PeriodStates.SUBMISSIONS
-    per.advance_state()
-    assert per.state == PeriodStates.PAUSED
-    per.advance_state()
-    assert per.state == PeriodStates.VOTING
-    per.advance_state()
-    assert per.state == PeriodStates.FINISHED
+    assert sub.votes == []
+    assert sub.count == 0
+
+    sub.votes = [1, 2, 2, 3]
+    assert sub.votes == [1, 2, 3]
+    assert sub.count == 3
+
+
+def test_advance_state(session: Session) -> None:
+    guild = Guild(id=1)
+    per1 = Period(id=1, guild=guild)
+    session.add(per1)
+    session.commit()
+
+    assert per1.active
+    assert not per1.completed
+    assert per1.state == PeriodStates.READY
+    per1.advance_state()
+    assert per1.active
+    assert not per1.completed
+    assert per1.state == PeriodStates.SUBMISSIONS
+    per1.advance_state()
+    assert per1.active
+    assert not per1.completed
+    assert per1.state == PeriodStates.PAUSED
+    per1.advance_state()
+    assert per1.active
+    assert not per1.completed
+    assert per1.voting
+    assert per1.state == PeriodStates.VOTING
+    per1.advance_state()
+    assert per1.state == PeriodStates.FINISHED
+    assert not per1.active
+    assert per1.completed
+
+    with pytest.raises(exceptions.FinishedPeriodException):
+        per1.deactivate()
+    with pytest.raises(exceptions.FinishedPeriodException):
+        per1.deactivate()
+
+    per2 = Period(id=2, guild=guild)
+    session.add(per2)
+    session.commit()
+    per2.advance_state()
+    per2.advance_state()
+    per2.deactivate()
+    assert per2.state == PeriodStates.PAUSED
+    assert not per2.voting
+    assert not per2.active and not per2.completed
+
+
+def test_submission_clear_other_votes(session: Session) -> None:
+    guild = Guild(id=1)
+    per = Period(id=1, guild=guild)
+    sub1 = Submission(id=1, user=1, period=per)
+    sub2 = Submission(id=2, user=2, period=per)
+    sub3 = Submission(id=3, user=3, period=per)
+    session.add_all([guild, per, sub1, sub2, sub3])
+    session.commit()
+
+    sub1.votes = [1, 2]
+    sub2.votes = [1, 2, 3]
+    sub3.votes = [2, 3]
+
+    sub2.clear_other_votes(ignore=sub2.id, users=[1, 2], session=session)
+
+    assert sub1.votes == []
+    assert sub2.votes == [1, 2, 3]
+    assert sub3.votes == [3]
+
+
 
 
 @pytest.fixture()

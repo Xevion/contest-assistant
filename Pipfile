@@ -7,7 +7,6 @@ verify_ssl = true
 
 [packages]
 discord = "~=1.0.1"
-aiosqlite = "~=0.16.1"
 pytest = "*"
 pytest-asyncio = "*"
 sqlalchemy = "*"

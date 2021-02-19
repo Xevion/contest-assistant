@@ -13,6 +13,7 @@ logger.setLevel(constants.LOGGING_LEVEL)
 
 
 # TODO: Add command error handling to all commands
+# TODO: Modify channel subject based on state
 
 class ContestCommandsCog(commands.Cog, name='Contest'):
     """
@@ -39,6 +40,7 @@ class ContestCommandsCog(commands.Cog, name='Contest'):
 
         # This prevents any cogs with an overwritten cog_command_error being handled here.
         cog = ctx.cog
+        # noinspection PyProtectedMember
         if cog and cog._get_overridden_method(cog.cog_command_error) is not None:
             return
 
